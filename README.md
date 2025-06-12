@@ -53,7 +53,7 @@ Readme was made with AI
 
 ## Support & Feedback
 - Request new instance support: Submit GitHub issue
-- Report problems: [Create issue](https://github.com/your-repo/issues)
+- Report problems: [Create issue](https://github.com/Brostash/rewst-buddy/issues)
 - Join discussion: `#rewst-buddy` channel on [Rewst Discord](https://discord.gg/rewst)
 
 ---
