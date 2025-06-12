@@ -69,3 +69,5 @@ Readme was made with AI
 ---
 
 > **Disclaimer**: This is an unofficial community tool not affiliated with Rewst Inc. Use at your own risk. Sessions inherit your current Rewst permissions - you can only access templates visible in your web UI.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

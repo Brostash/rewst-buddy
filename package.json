@@ -3,7 +3,7 @@
   "type": "module",
   "name": "rewst-buddy",
   "displayName": "rewst-buddy",
-  "description": "Buddy for Rewst",
+  "description": "Buddy for Rewst (Templates)",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.100.0"
@@ -11,6 +11,15 @@
   "categories": [
     "Other"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:Brostash/rewst-buddy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Brostash/rewst-buddy/issues"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Brostash/rewst-buddy/blob/master/README.md",
   "keywords": [
     "rewst",
     "Rewst",
