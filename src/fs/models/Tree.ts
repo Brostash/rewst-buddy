@@ -1,53 +1,93 @@
-import * as vscode from 'vscode';
-import Entry from "./Entry.js";
-import RewstFS from '../RewstFS.js';
+import * as vscode from "vscode";
+import { Entry, EntryInput, RType } from "./Entry.js";
+import RewstFS from "../RewstFS.js";
+import path from "path";
+import { AlmostOrg, AlmostOrgInput } from "./Org.js";
+import RewstClient from "rewst-client/RewstClient.js";
 
 interface ITree<T extends Entry> {
-    lookupEntry(uri: vscode.Uri): Entry | undefined;
-    insertEntry(t: T): void;
-    removeEntry(uri: vscode.Uri): void;
+  lookupEntry(uri: vscode.Uri): Entry | undefined;
+  insertEntry(t: T): void;
+  removeEntry(uri: vscode.Uri): void;
 }
 
-export default class Tree implements ITree<Entry> {
-    constructor(public root: Entry) { }
+export function getUriParts(uri: vscode.Uri): string[] {
+  const noScheme = uri.toString().replace(RewstFS.schema, "");
+  const parts = noScheme.split("/");
+  return parts;
+}
 
-    lookupEntry(uri: vscode.Uri): Entry | undefined {
-        const sUri = uri.toString();
-        if (sUri == this.root.getUri.toString()) {
-            return this.root;
-        }
+export function getParentUri(uri: vscode.Uri): vscode.Uri {
+  const dirPath = path.posix.dirname(uri.path);
 
-        const parts = Entry.getUriParts(uri);
-        let cur = this.root;
-        for (const part of parts) {
-            const match = cur.children.filter(c => (c.id === part) || (sUri === c.getUri().toString()));
-            if (match.length !== 1) {
-                return undefined;
-            }
-            cur = match[0];
-        }
-        return cur;
+  const parentUri = uri.with({ path: dirPath });
+  return parentUri;
+}
+
+export function getOrgId(uri: vscode.Uri): string {
+  return uri.authority;
+}
+
+export class Tree implements ITree<Entry> {
+  orgs: Map<string, Entry> = new Map();
+  almostOrgs: Map<string, AlmostOrg> = new Map();
+  //   root: vscode.TreeItem = {};
+  constructor() {
+    [
+      new AlmostOrg({ label: "t1", orgId: "1" }),
+      new AlmostOrg({ label: "t2", orgId: "2" }),
+    ].forEach((ao) => this.almostOrgs.set(ao.orgId, ao));
+  }
+
+  lookupEntry(uri: vscode.Uri): Entry {
+    const orgId = getOrgId(uri);
+    const org = this.orgs.get(orgId);
+
+    if (org === undefined) {
+      throw vscode.FileSystemError.FileNotFound(uri);
     }
 
-    insertEntry(entry: Entry, parentUri?: vscode.Uri): void {
+    const parts = getUriParts(uri);
+    let cur: Entry = org;
+    for (const part of parts) {
+      const match = cur.children.filter((c) => c.id === part);
+      if (match.length !== 1) {
+        throw vscode.FileSystemError.FileNotFound(uri);
+      }
+      cur = match[0];
+    }
+    return cur;
+  }
 
-        if (parentUri === undefined) {
-            this.root.addChild(entry);
-            return;
-        }
-
-        const parent = this.lookupEntry(parentUri);
-
-        if (parent === undefined) {
-            throw new Error(`Parent with uri '${parentUri}' could not be found`);
-        } else {
-            parent.addChild(entry);
-        }
-
+  insertEntry(entry: Entry, parentUri?: vscode.Uri): void {
+    if (parentUri === undefined) {
+      if (entry.rtype !== RType.Org) {
+        throw new Error("yo, can't add something to root that isn't an Org");
+      } else {
+        this.orgs.set(entry.id, entry);
+      }
+      return;
     }
 
-    removeEntry(uri: vscode.Uri): void {
-        throw new Error("Method not implemented.");
-    }
+    const parent = this.lookupEntry(parentUri);
 
+    if (parent === undefined) {
+      throw new Error(`Parent with uri '${parentUri}' could not be found`);
+    } else {
+      parent.addChild(entry);
+    }
+  }
+
+  removeEntry(uri: vscode.Uri): void {
+    throw new Error("Method not implemented.");
+  }
+
+  getOrgs(): vscode.TreeItem[] {
+    return [...this.orgs.values(), ...this.almostOrgs.values()];
+  }
+
+  newOrg(org: Entry) {
+    this.almostOrgs.delete(org.orgId);
+    this.orgs.set(org.orgId, org);
+  }
 }

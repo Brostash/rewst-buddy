@@ -1,4 +1,4 @@
-import PersistentStorage from "PersistentStorage/RewstOrgData.js";
+import Storage from "storage/Storage.js";
 import GenericCommand from "../models/GenericCommand.js";
 import { uuidv7 } from "uuidv7";
 

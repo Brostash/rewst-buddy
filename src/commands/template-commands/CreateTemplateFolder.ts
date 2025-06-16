@@ -1,14 +1,18 @@
 import RewstClient from "rewst-client/RewstClient.js";
 import GenericCommand from "../models/GenericCommand.js";
 import * as vscode from "vscode";
-import { Directory } from "@fs/models/Entry.js";
+import {
+  createTemplateFolder,
+  TemplateFolder,
+} from "@fs/models/TemplateFolder.js";
+import { EntryInput } from "@fs/models/Entry.js";
 
 export class CreateTemplateFolder extends GenericCommand {
   commandName: string = "CreateTemplateFolder";
   async execute(...args: any): Promise<void> {
     const entry = args[0][0] ?? undefined;
 
-    if (!(entry instanceof Directory)) {
+    if (!(entry instanceof TemplateFolder)) {
       const message: string =
         "Cannot create folder in something that is not a folder";
       vscode.window.showErrorMessage(message);
@@ -21,11 +25,16 @@ export class CreateTemplateFolder extends GenericCommand {
     });
 
     if (!label) {
-      this.log.error("No label provided, exiting Folder Creation");
+      console.log("No label provided, exiting Folder Creation");
       return;
     }
 
-    const folder = await this.cmdContext.fs.createTemplateFolder(entry, label);
+    const templateFolderInput: EntryInput = {
+      client: entry.client,
+      parent: entry,
+    };
+
+    const folder = await createTemplateFolder(entry, label);
 
     vscode.commands.executeCommand("rewst-buddy.RefreshView", folder);
   }

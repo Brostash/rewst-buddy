@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import Entry, { Directory } from "./models/Entry.js";
-import { CommandContext } from "@commands/models/GenericCommand.js";
 import RewstFS from "./RewstFS.js";
+import { Entry } from "./models/Entry.js";
+import { TemplateFolder } from "./models/TemplateFolder.js";
 
 export default class RewstDragAndDropController
   implements vscode.TreeDragAndDropController<Entry>
@@ -27,7 +27,7 @@ export default class RewstDragAndDropController
     dataTransfer: vscode.DataTransfer,
     token: vscode.CancellationToken
   ): Promise<void> {
-    if (!(target instanceof Directory)) {
+    if (!(target instanceof TemplateFolder)) {
       throw new Error("Can't move into not folder");
     }
 

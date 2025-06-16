@@ -201,7 +201,7 @@
     "check-types": "tsc --noEmit --watch",
     "minify": "node esbuild.js --production",
     "test": "vscode-test",
-    "compile": "npm run check-types && node esbuild.js",
+    "compile": "node esbuild.js && npm run check-types",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json"

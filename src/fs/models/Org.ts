@@ -1,103 +1,80 @@
-import RewstClient from "../../rewst-client/RewstClient.js";
-import { uuidv7 } from "uuidv7";
 import { Template } from "./Template.js";
-import Entry, {
-  Directory,
-  ReadonlyDirectory,
-  TemplateDirectory,
-} from "./Entry.js";
-import FolderStructure from "./FolderStructure.js";
-import PersistentStorage from "PersistentStorage/RewstOrgData.js";
+import { Entry, ContextValueParams, RType } from "./Entry.js";
+import Storage from "storage/Storage.js";
 import * as vscode from "vscode";
+import RewstFS from "@fs/RewstFS.js";
 
-export default class Org extends ReadonlyDirectory {
-  constructor(id: string, label: string, public rewstClient: RewstClient) {
-    super(id, label);
+export interface AlmostOrgInput {
+  label: string;
+  orgId: string;
+}
+
+export class AlmostOrg extends vscode.TreeItem {
+  contextValue = "almost-org";
+  collapsibleState = vscode.TreeItemCollapsibleState.None;
+  orgId: string;
+  command: vscode.Command;
+
+  constructor(input: AlmostOrgInput) {
+    super(input.label);
+    this.orgId = input.orgId;
+    this.command = {
+      title: "Load Org",
+      command: "rewst-buddy.NewClient",
+      arguments: [this.orgId],
+    };
   }
+}
 
-  templatesFolder: ReadonlyDirectory = new ReadonlyDirectory(
-    uuidv7(),
-    "Templates"
-  );
-  children = [this.templatesFolder];
-
-  getTemplateMap(): Map<string, Template> {
-    const templates = new Map<string, Template>();
-
-    let queue: Entry[] = [...this.templatesFolder.children];
-
-    while (queue.length) {
-      const top = queue.shift();
-      if (top instanceof Template) {
-        templates.set(top.id, top);
-      } else if (top instanceof Directory) {
-        queue.push(...top.children);
-      }
+export class Org extends Entry {
+  getCommand(): vscode.Command {
+    throw new Error("Method not implemented.");
+  }
+  readData(): Promise<string> {
+    throw new Error("Method not implemented.");
+  }
+  writeData(data: string): Promise<boolean> {
+    throw new Error("Method not implemented.");
+  }
+  serialize(): string {
+    throw new Error("Method not implemented.");
+  }
+  deserialize<T extends Entry>(): T {
+    throw new Error("Method not implemented.");
+  }
+  setLabel(label: string): void {
+    throw new Error("Method not implemented.");
+  }
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      return;
     }
+    //something something create template folder and have it protected.
 
-    return templates;
-  }
-
-  async initializeTemplates(context: vscode.ExtensionContext) {
-    this.templatesFolder.addViewContext("has-templates");
-    this.templatesFolder.addViewContext("has-templatefolders");
-
-    const response = await this.rewstClient.sdk.listTemplatesMinimal({
-      orgId: this.id,
-    });
-    let templates = response.templates;
-
-    templates.forEach((template: { id: string; name: string }) => {
-      new Template(template.id, template.name).moveTo(this.templatesFolder);
-    });
-
-    this.addChild(this.templatesFolder);
-    this.fullMimicStructure(context);
-  }
-
-  fullMimicStructure(context: vscode.ExtensionContext) {
-    const pstorage = new PersistentStorage(context);
-    const data = pstorage.getRewstOrgData(this.id);
-    const templateMap = this.getTemplateMap();
-
-    if (data.templateFolderStructure) {
-      const structure = data.templateFolderStructure;
-      this.templatesFolder.id = structure.id;
-      Org.mimicStructure(templateMap, structure, this.templatesFolder);
+    const response = await this.client.sdk.UserOrganization();
+    if (response.userOrganization === undefined) {
+      throw new Error("could not get org info");
     }
+    const org = response.userOrganization;
+    this.label = org?.name ?? "";
+
+    this.initialized = true;
   }
 
-  private static mimicStructure(
-    templateMap: Map<string, Template>,
-    structure: FolderStructure,
-    parent: Entry
-  ) {
-    for (const child of structure.children || []) {
-      if (child.children?.length) {
-        //this is a folder
-        const newFolder = new TemplateDirectory(child.id, child.label);
-        newFolder.moveTo(parent);
-        this.mimicStructure(templateMap, child, newFolder);
-      } else {
-        //this is a template
-        const template = templateMap.get(child.id);
-        if (template) {
-          template.moveTo(parent);
-          template.ext = child.ext;
-        }
-      }
-    }
-  }
+  contextValueParams: ContextValueParams = {
+    hasTemplates: false,
+    hasTemplateFolders: false,
+    isRenamable: false,
+    isTemplateFolder: true,
+    isTemplate: false,
+  };
+  rtype = RType.Org;
 
-  getTemplateFolderStructure(): FolderStructure {
-    const templatesfolder = this.templatesFolder;
-    const structure = templatesfolder.getStructure();
-    if (structure == undefined) {
-      const message = "Failed to save folder structure";
-      vscode.window.showErrorMessage(message);
-      console.log(message);
-      throw new Error(message);
-    }
-    return structure;
+  getUri(): vscode.Uri {
+    return RewstFS.uriOf(`/${this.orgId}`);
   }
+}
+
+export async function createOrg(orgId: string): Promise<Org> {
+  throw new Error("Not implemented yet");
 }

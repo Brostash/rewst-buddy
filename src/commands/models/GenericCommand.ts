@@ -1,15 +1,15 @@
 import * as vscode from "vscode";
 import RewstFS from "@fs/RewstFS.js";
 import RewstView from "@fs/RewstView.js";
-import PersistentStorage from "PersistentStorage/RewstOrgData.js";
 import { Logger } from "logger.js";
+import Storage from "storage/Storage.js";
 
 export interface CommandContext {
   context: vscode.ExtensionContext;
   commandPrefix: string;
   fs: RewstFS;
   view: RewstView;
-  storage: PersistentStorage;
+  storage: Storage;
   log: Logger;
 }
 

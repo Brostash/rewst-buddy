@@ -1,13 +1,12 @@
 import * as vscode from "vscode";
 import RewstFS from "./RewstFS.js";
-import Entry, { Directory, ReadonlyDirectory } from "./models/Entry.js";
 import { Template } from "./models/Template.js";
-import RewstClient from "rewst-client/RewstClient.js";
-import Org from "./models/Org.js";
-import { Dir } from "fs";
 import RewstDragAndDropController from "./RewstDragAndDropController.js";
+import { Entry } from "./models/Entry.js";
 
-export default class RewstView implements vscode.TreeDataProvider<Entry> {
+export default class RewstView
+  implements vscode.TreeDataProvider<vscode.TreeItem>
+{
   public rewstfs: RewstFS = new RewstFS();
 
   constructor(private context: vscode.ExtensionContext) {
@@ -24,18 +23,7 @@ export default class RewstView implements vscode.TreeDataProvider<Entry> {
     });
   }
 
-  public addSampleData() {
-    const template = new Template("tem", "Templ");
-    template.ext = "ps1";
-    template.data = Buffer.from("- just: write something");
-
-    const dir = new ReadonlyDirectory("dir1", "Dir1");
-    dir.addViewContext("has-templates has-templatefolders");
-    dir.addChild(template);
-    dir.addChild(new Directory("dir2", "Dir 2"));
-
-    this.rewstfs.tree.insertEntry(dir);
-  }
+  public addSampleData() {}
 
   //#region treedata
   private _onDidChangeTreeData: vscode.EventEmitter<
@@ -48,60 +36,24 @@ export default class RewstView implements vscode.TreeDataProvider<Entry> {
     this._onDidChangeTreeData.fire(item);
   }
 
-  getTreeItem(element: Entry): vscode.TreeItem {
-    if (element instanceof Template) {
-      const template: Template = element;
-      return {
-        ...template,
-        resourceUri: template.getUri(),
-        command: template.getCommand(),
-      };
+  async getTreeItem(element: Entry): Promise<vscode.TreeItem> {
+    if (element instanceof Entry) {
+      return await element.getTreeItem();
     }
-    return {
-      ...element,
-      resourceUri: element.getUri(),
-    };
+    return element;
   }
 
-  getChildren(element?: Entry | undefined): vscode.ProviderResult<Entry[]> {
+  async getChildren(element?: Entry | undefined): Promise<vscode.TreeItem[]> {
     if (element === undefined) {
-      element = this.rewstfs.tree.root;
+      return this.rewstfs.tree.getOrgs();
     }
 
-    if (!(element instanceof Directory)) {
-      return element.children;
-    }
-
-    return element.children.sort((a: Entry, b: Entry) => {
-      let score = a.label.localeCompare(b.label);
-      score -= a instanceof Directory ? 100 : 0;
-      score += b instanceof Directory ? 100 : 0;
-      return score;
-    });
+    return element.getChildren().then((x) => x);
   }
-  getParent?(element: Entry): vscode.ProviderResult<Entry> {
+
+  getParent(element: Entry): Entry | undefined {
     console.log(`getParent ${element}`);
     return element.parent;
-  }
-
-  public async initializeClient(client: RewstClient): Promise<void> {
-    console.log(`Initializing client`);
-    const response = await client.sdk.UserOrganization();
-    const org = response.userOrganization;
-
-    if (org?.name === undefined) {
-      throw new Error(`Org has an undefined name? ${org}`);
-    }
-
-    if (typeof org?.id !== "string") {
-      throw new Error(`Org has an undefined id? ${org}`);
-    }
-
-    const orgEntry: Org = new Org(org?.id, org?.name, client);
-    orgEntry.initializeTemplates(this.context).then(() => {
-      this.rewstfs.tree.insertEntry(orgEntry);
-      this.refresh();
-    });
   }
 
   //#endregion

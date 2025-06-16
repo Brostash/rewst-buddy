@@ -6,14 +6,15 @@ import RewstView from "@fs/RewstView.js";
 import { CommandContext } from "@commands/models/GenericCommand.js";
 import CommandInitiater from "@commands/models/CommandInitiater.js";
 import RewstClient from "rewst-client/RewstClient.js";
-import PersistentStorage from "PersistentStorage/RewstOrgData.js";
+import Storage from "storage/Storage.js";
 import { Logger } from "logger.js";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-  // Use the console to output diagnostic information (log.info) and errors (console.error)
+export async function activate(context: vscode.ExtensionContext) {
+  // Use the console to output diagnostic information (console.log) and errors (console.error)
   // This line of code will only be executed once when your extension is activated
+  console.log('Congratulations, your extension "rewst-buddy" is now active!');
 
   const log = new Logger(context);
   log.info("test", true);
@@ -26,20 +27,13 @@ export function activate(context: vscode.ExtensionContext) {
     context: context,
     view: view,
     fs: view.rewstfs,
-    storage: new PersistentStorage(context),
+    storage: new Storage(context),
     log: log,
   };
 
   CommandInitiater.registerCommands(ctx);
 
-  RewstClient.LoadClients(context).then((clients) =>
-    clients.forEach((client) => view.initializeClient(client))
-  );
-
-  log.info("Done loading");
-
-  vscode.commands.executeCommand("rewst-buddy.ReadTest");
-  vscode.commands.executeCommand("rewst-buddy.SaveTest");
+  console.log("Done loading");
 }
 
 // This method is called when your extension is deactivated

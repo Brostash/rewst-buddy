@@ -1,8 +1,8 @@
 import RewstClient from "rewst-client/RewstClient.js";
 import GenericCommand from "../models/GenericCommand.js";
 import * as vscode from "vscode";
-import { Template } from "@fs/models/Template.js";
-import { Directory } from "@fs/models/Entry.js";
+import { createTemplate, Template } from "@fs/models/Template.js";
+import { TemplateFolder } from "@fs/models/TemplateFolder.js";
 
 export class CreateTemplate extends GenericCommand {
   commandName: string = "CreateTemplate";
@@ -10,7 +10,7 @@ export class CreateTemplate extends GenericCommand {
   async execute(...args: any): Promise<void> {
     const entry = args[0][0] ?? undefined;
 
-    if (!(entry instanceof Directory)) {
+    if (!(entry instanceof TemplateFolder)) {
       const message: string =
         "Cannot create template in something that is not a folder";
       vscode.window.showErrorMessage(message);
@@ -27,7 +27,7 @@ export class CreateTemplate extends GenericCommand {
       return;
     }
 
-    const template = await this.cmdContext.fs.createTemplate(entry, label);
+    const template = await createTemplate(entry, label);
     vscode.commands.executeCommand("rewst-buddy.RefreshView", template);
     vscode.commands.executeCommand("rewst-buddy.SaveFolderStructure", template);
   }
