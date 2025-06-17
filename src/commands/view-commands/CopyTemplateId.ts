@@ -1,15 +1,14 @@
-import RewstClient from "rewst-client/RewstClient.js";
-import GenericCommand from "../models/GenericCommand.js";
+import { Entry } from "@fs/models";
+import GenericCommand from "../models/GenericCommand";
 import * as vscode from "vscode";
-import { Entry } from "@fs/models/Entry.js";
 
 export class CopyId extends GenericCommand {
-  commandName: string = "CopyId";
+  commandName = "CopyId";
   async execute(...args: any): Promise<void> {
     const entry = args[0][0] ?? undefined;
 
     if (!(entry instanceof Entry)) {
-      const message: string = "Cannot copy id of that";
+      const message = "Cannot copy id of that";
       vscode.window.showErrorMessage(message);
       throw new Error(message);
     }

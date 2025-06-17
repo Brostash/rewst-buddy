@@ -1,11 +1,8 @@
-import RewstClient from "rewst-client/RewstClient.js";
-import GenericCommand from "../models/GenericCommand.js";
-import * as vscode from "vscode";
-import { Template } from "@fs/models/Template.js";
-import { Entry } from "@fs/models/Entry.js";
+import GenericCommand from "../models/GenericCommand";
+import vscode from "vscode";
 
 export class SaveFolderStructure extends GenericCommand {
-  commandName: string = "SaveFolderStructure";
+  commandName = "SaveFolderStructure";
   async execute(...args: any): Promise<unknown> {
     const entry = args[0][0] ?? undefined;
 

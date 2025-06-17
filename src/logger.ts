@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { CommandContext } from "@commands/models/GenericCommand.js";
+import { CommandContext } from "@commands/models/GenericCommand";
 
 export class Logger {
   private extName = "rewst-buddy";

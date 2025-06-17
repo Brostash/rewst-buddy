@@ -1,9 +1,9 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import RewstFS from "../RewstFS.js";
-import RewstClient from "../../rewst-client/RewstClient.js";
+import RewstFS from "../RewstFS";
 import { uuidv7 } from "uuidv7";
 import { isDirective } from "graphql";
+import { RewstClient } from "@client/index";
 
 export enum RType {
   Root,
@@ -91,10 +91,10 @@ export abstract class Entry implements IEntry {
   checkboxState?:
     | vscode.TreeItemCheckboxState
     | {
-        readonly state: vscode.TreeItemCheckboxState;
-        readonly tooltip?: string;
-        readonly accessibilityInformation?: vscode.AccessibilityInformation;
-      }
+      readonly state: vscode.TreeItemCheckboxState;
+      readonly tooltip?: string;
+      readonly accessibilityInformation?: vscode.AccessibilityInformation;
+    }
     | undefined;
 
   constructor(input: EntryInput) {

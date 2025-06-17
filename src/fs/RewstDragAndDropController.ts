@@ -1,14 +1,12 @@
 import * as vscode from "vscode";
-import RewstFS from "./RewstFS.js";
-import { Entry } from "./models/Entry.js";
-import { TemplateFolder } from "./models/TemplateFolder.js";
+import RewstFS from "./RewstFS";
+import { Entry, TemplateFolder } from "./models";
 
 export default class RewstDragAndDropController
-  implements vscode.TreeDragAndDropController<Entry>
-{
+  implements vscode.TreeDragAndDropController<Entry> {
   dropMimeTypes = ["application/vnd.code.tree.RewstView"];
   dragMimeTypes = ["text/uri-list"];
-  constructor(public fs: RewstFS) {}
+  constructor(public fs: RewstFS) { }
   handleDrag?(
     source: readonly Entry[],
     dataTransfer: vscode.DataTransfer,

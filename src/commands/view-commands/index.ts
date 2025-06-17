@@ -1,4 +1,4 @@
-export { SaveFolderStructure } from "./SaveFolderStructure.js";
-export { CopyId } from "./CopyTemplateId.js";
-export { RefreshView } from "./RefreshView.js";
-export { Rename } from "./Rename.js";
+export { SaveFolderStructure } from "./SaveFolderStructure";
+export { CopyId } from "./CopyTemplateId";
+export { RefreshView } from "./RefreshView";
+export { Rename } from "./Rename";

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { GraphQLClient } from "graphql-request";
-import { getSdk, Sdk } from "../graphql_sdk.js";
-import RewstProfile, { RewstProfiles } from "./models/RewstProfiles.js";
+import { getSdk, Sdk } from "../graphql_sdk";
+import RewstProfile, { RewstProfiles } from "./models/RewstProfiles";
 import assert from "assert";
 
 function parseCookieString(cookieString: string): Record<string, string> {

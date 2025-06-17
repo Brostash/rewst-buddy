@@ -1,4 +1,4 @@
-import GenericCommand from "../models/GenericCommand.js";
+import GenericCommand from "../models/GenericCommand";
 
 export class RefreshView extends GenericCommand {
   commandName: string = "RefreshView";

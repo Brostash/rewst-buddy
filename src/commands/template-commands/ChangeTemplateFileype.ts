@@ -1,10 +1,10 @@
-import RewstClient from "rewst-client/RewstClient.js";
-import GenericCommand from "../models/GenericCommand.js";
+import RewstClient from "client/RewstClient";
+import GenericCommand from "../models/GenericCommand";
 import * as vscode from 'vscode';
-import { Template } from "@fs/models/Template.js";
+import { Template } from "@fs/models";
 
 export class ChangeTemplateFiletypePowershell extends GenericCommand {
-    commandName: string = 'ChangeTemplateFiletypePowershell';
+    commandName = 'ChangeTemplateFiletypePowershell';
     async execute(...args: any): Promise<void> {
         const entry = args[0][0] ?? undefined;
 
@@ -16,7 +16,7 @@ export class ChangeTemplateFiletypePowershell extends GenericCommand {
 }
 
 export class ChangeTemplateFiletypeHTML extends GenericCommand {
-    commandName: string = 'ChangeTemplateFiletypeHTML';
+    commandName = 'ChangeTemplateFiletypeHTML';
     async execute(...args: any): Promise<void> {
         const entry = args[0][0] ?? undefined;
 
@@ -28,7 +28,7 @@ export class ChangeTemplateFiletypeHTML extends GenericCommand {
 }
 
 export class ChangeTemplateFiletypeYAML extends GenericCommand {
-    commandName: string = 'ChangeTemplateFiletypeYAML';
+    commandName = 'ChangeTemplateFiletypeYAML';
     async execute(...args: any): Promise<void> {
         const entry = args[0][0] ?? undefined;
 
@@ -40,7 +40,7 @@ export class ChangeTemplateFiletypeYAML extends GenericCommand {
 }
 
 export class ChangeTemplateFiletypeCustom extends GenericCommand {
-    commandName: string = 'ChangeTemplateFiletypeCustom';
+    commandName = 'ChangeTemplateFiletypeCustom';
     async execute(...args: any): Promise<void> {
         const entry = args[0][0] ?? undefined;
 
@@ -55,7 +55,7 @@ export class ChangeTemplateFiletypeCustom extends GenericCommand {
             validateInput: (input) => {
                 return /^[a-zA-Z0-9 ]*$/.test(input)
                     ? undefined
-                    : 'Please use alpha-numerics'
+                    : 'Please use alpha-numerics';
             }
         });
 

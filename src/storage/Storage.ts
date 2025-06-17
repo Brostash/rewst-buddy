@@ -1,15 +1,15 @@
-import { Org } from "@fs/models/Org.js";
+import { Org } from "@fs/models";
 import {
   CreateOrgVariableMutationVariables,
   OrgVariableCategory,
-} from "graphql_sdk.js";
-import RewstClient from "rewst-client/RewstClient.js";
+} from "graphql_sdk";
+import RewstClient from "client/RewstClient";
 import * as vscode from "vscode";
 
 export default class Storage {
-  key: string = "RewstOrgData";
+  key = "RewstOrgData";
 
-  constructor(private context: vscode.ExtensionContext) {}
+  constructor(private context: vscode.ExtensionContext) { }
 
   static serializeMap(myMap: Map<string, string>): string {
     throw new Error("not made yet");

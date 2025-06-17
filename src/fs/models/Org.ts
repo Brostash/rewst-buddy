@@ -1,8 +1,8 @@
-import { Template } from "./Template.js";
-import { Entry, ContextValueParams, RType } from "./Entry.js";
-import Storage from "storage/Storage.js";
+import { Template } from "./Template";
+import { Entry, ContextValueParams, RType } from "./Entry";
+import Storage from "storage/Storage";
 import * as vscode from "vscode";
-import RewstFS from "@fs/RewstFS.js";
+import RewstFS from "@fs/RewstFS";
 
 export interface AlmostOrgInput {
   label: string;

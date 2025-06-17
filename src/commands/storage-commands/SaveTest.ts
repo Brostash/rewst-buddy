@@ -1,5 +1,5 @@
-import Storage from "storage/Storage.js";
-import GenericCommand from "../models/GenericCommand.js";
+import Storage from "storage/Storage";
+import GenericCommand from "../models/GenericCommand";
 import { uuidv7 } from "uuidv7";
 
 export class SaveTest extends GenericCommand {

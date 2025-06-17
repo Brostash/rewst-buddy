@@ -1,13 +1,13 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import RewstView from "@fs/RewstView.js";
-import { CommandContext } from "@commands/models/GenericCommand.js";
-import CommandInitiater from "@commands/models/CommandInitiater.js";
-import RewstClient from "rewst-client/RewstClient.js";
-import Storage from "storage/Storage.js";
-import { Logger } from "logger.js";
+
+import RewstView from "@fs/RewstView";
+import { CommandContext } from "@commands/models/GenericCommand";
+import CommandInitiater from "@commands/models/CommandInitiater";
+import RewstClient from "client/RewstClient";
+import Storage from "storage/Storage";
+import { Logger } from "logger";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -37,4 +37,4 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }

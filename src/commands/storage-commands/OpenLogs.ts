@@ -1,4 +1,4 @@
-import GenericCommand from "../models/GenericCommand.js";
+import GenericCommand from "../models/GenericCommand";
 import * as vscode from "vscode";
 
 export class OpenLogs extends GenericCommand {

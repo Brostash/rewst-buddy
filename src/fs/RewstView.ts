@@ -1,12 +1,10 @@
-import * as vscode from "vscode";
-import RewstFS from "./RewstFS.js";
-import { Template } from "./models/Template.js";
-import RewstDragAndDropController from "./RewstDragAndDropController.js";
-import { Entry } from "./models/Entry.js";
+import vscode from "vscode";
+import RewstFS from "./RewstFS";
+import { Entry } from "./models/";
+import RewstDragAndDropController from "./RewstDragAndDropController";
 
 export default class RewstView
-  implements vscode.TreeDataProvider<vscode.TreeItem>
-{
+  implements vscode.TreeDataProvider<vscode.TreeItem> {
   public rewstfs: RewstFS = new RewstFS();
 
   constructor(private context: vscode.ExtensionContext) {
@@ -23,7 +21,7 @@ export default class RewstView
     });
   }
 
-  public addSampleData() {}
+  public addSampleData() { }
 
   //#region treedata
   private _onDidChangeTreeData: vscode.EventEmitter<

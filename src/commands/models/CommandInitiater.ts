@@ -2,14 +2,14 @@ import * as vscode from "vscode";
 import GenericCommand, {
   createCommand,
   CommandContext,
-} from "@commands/models/GenericCommand.js";
-import * as Commands from "@commands/index.js";
+} from "@commands/models/GenericCommand";
+import * as Commands from "@commands/index";
 
 export default class CommandInitiater {
   static registerCommands(cmdContext: CommandContext) {
     cmdContext.log.info("registering");
 
-    const types: Array<new (ctx: CommandContext) => GenericCommand> =
+    const types: (new (ctx: CommandContext) => GenericCommand)[] =
       Object.values(Commands);
 
     types.forEach((type) => {

@@ -1,3 +1,3 @@
-export { NewClient } from './NewClient.js';
-export { LoadClients } from './LoadClients.js';
-export { ClearProfiles } from './ClearProfiles.js';
+export { NewClient } from './NewClient';
+export { LoadClients } from './LoadClients';
+export { ClearProfiles } from './ClearProfiles';

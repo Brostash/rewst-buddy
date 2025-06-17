@@ -1,19 +1,19 @@
-import RewstClient from "rewst-client/RewstClient.js";
-import GenericCommand from "../models/GenericCommand.js";
+import RewstClient from "client/RewstClient";
+import GenericCommand from "../models/GenericCommand";
 import * as vscode from "vscode";
 import {
   createTemplateFolder,
   TemplateFolder,
-} from "@fs/models/TemplateFolder.js";
-import { EntryInput } from "@fs/models/Entry.js";
+  EntryInput
+} from "@fs/models";
 
 export class CreateTemplateFolder extends GenericCommand {
-  commandName: string = "CreateTemplateFolder";
+  commandName = "CreateTemplateFolder";
   async execute(...args: any): Promise<void> {
     const entry = args[0][0] ?? undefined;
 
     if (!(entry instanceof TemplateFolder)) {
-      const message: string =
+      const message =
         "Cannot create folder in something that is not a folder";
       vscode.window.showErrorMessage(message);
       throw new Error(message);

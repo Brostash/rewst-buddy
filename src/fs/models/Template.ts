@@ -1,8 +1,7 @@
-import { TreeItemCollapsibleState, FileType } from "vscode";
-import { ContextValueParams, Entry, EntryInput, RType } from "./Entry.js";
-import RewstClient from "../../rewst-client/RewstClient.js";
+import { FileType } from "vscode";
+import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import * as vscode from "vscode";
-import { TemplateFolder } from "./TemplateFolder.js";
+import { TemplateFolder } from "./TemplateFolder";
 
 export class Template extends Entry {
   rtype: RType = RType.Template;

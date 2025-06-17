@@ -1,3 +1,3 @@
-export { OpenLogs } from "./OpenLogs.js";
-export { ReadTest } from "./ReadTest.js";
-export { SaveTest } from "./SaveTest.js";
+export { OpenLogs } from "./OpenLogs";
+export { ReadTest } from "./ReadTest";
+export { SaveTest } from "./SaveTest";

@@ -1,9 +1,9 @@
-import GenericCommand from "../models/GenericCommand.js";
-import RewstClient from "../../rewst-client/RewstClient.js";
-import { createOrg } from "@fs/models/Org.js";
+import GenericCommand from "../models/GenericCommand";
+import { RewstClient } from "@client/index";
+import { createOrg } from "@fs/models";
 
 export class NewClient extends GenericCommand {
-  commandName: string = "NewClient";
+  commandName = "NewClient";
 
   async execute(...args: unknown[]) {
     const client = await RewstClient.create(this.context);

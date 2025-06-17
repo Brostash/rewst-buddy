@@ -29,6 +29,7 @@ const config = {
     alias: {
       '@fs': path.resolve(__dirname, 'src/fs/'),
       '@commands': path.resolve(__dirname, 'src/commands/'),
+      '@client': path.resolve(__dirname, 'src/client/'),
     },
     modules: [path.resolve(__dirname, 'src'), 'node_modules']
 

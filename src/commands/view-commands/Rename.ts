@@ -1,12 +1,9 @@
-import RewstClient from "rewst-client/RewstClient.js";
-import GenericCommand from "../models/GenericCommand.js";
+import { Template, TemplateFolder } from "@fs/models";
+import GenericCommand from "../models/GenericCommand";
 import * as vscode from "vscode";
-import { Entry } from "@fs/models/Entry.js";
-import { Template } from "@fs/models/Template.js";
-import { TemplateFolder } from "@fs/models/TemplateFolder.js";
 
 export class Rename extends GenericCommand {
-  commandName: string = "Rename";
+  commandName = "Rename";
   async execute(...args: any): Promise<unknown> {
     const entry = args[0][0] ?? undefined;
     console.log(`Rename`);

@@ -34,8 +34,9 @@ export default tseslint.config(
 					'format': ['camelCase', 'PascalCase']
 				}
 			],
-			"no-unused-vars": "warn",
-			"@typescript-eslint/no-unused-vars": "warn"
+			"@typescript-eslint/no-explicit-any" : 'off',
+			"no-unused-vars": "off",
+			"@typescript-eslint/no-unused-vars": 'off'
 		}
 	}
 );

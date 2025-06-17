@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
-import { Entry, EntryInput, RType } from "./Entry.js";
-import RewstFS from "../RewstFS.js";
+import { Entry, EntryInput, RType } from "./Entry";
+import RewstFS from "../RewstFS";
 import path from "path";
-import { AlmostOrg, AlmostOrgInput } from "./Org.js";
-import RewstClient from "rewst-client/RewstClient.js";
+import { AlmostOrg, AlmostOrgInput } from "./Org";
+import RewstClient from "client/RewstClient";
 
 interface ITree<T extends Entry> {
   lookupEntry(uri: vscode.Uri): Entry | undefined;
@@ -29,8 +29,8 @@ export function getOrgId(uri: vscode.Uri): string {
 }
 
 export class Tree implements ITree<Entry> {
-  orgs: Map<string, Entry> = new Map();
-  almostOrgs: Map<string, AlmostOrg> = new Map();
+  orgs = new Map<string, Entry>();
+  almostOrgs = new Map<string, AlmostOrg>();
   //   root: vscode.TreeItem = {};
   constructor() {
     [

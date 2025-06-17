@@ -1,13 +1,13 @@
-import { ContextValueParams, Entry, EntryInput, RType } from "./Entry.js";
+import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import * as vscode from "vscode";
-import { Template } from "./Template.js";
+import { Template } from "./Template";
 
 export async function getTemplateMap(
   folder: TemplateFolder
 ): Promise<Map<string, Template>> {
   const templates = new Map<string, Template>();
 
-  let queue: Entry[] = await folder.getChildren();
+  const queue: Entry[] = await folder.getChildren();
 
   while (queue.length) {
     const top = queue.shift();
@@ -61,7 +61,7 @@ export class TemplateFolder extends Entry {
       const response = await this.client.sdk.listTemplatesMinimal({
         orgId: this.id,
       });
-      let templates = response.templates;
+      const templates = response.templates;
 
       templates.forEach((template: { id: string; name: string }) => {
         const input: EntryInput = {

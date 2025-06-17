@@ -19,6 +19,9 @@
 			],
 			"@commands/*": [
 				"commands/*"
+			],
+			"@client/*": [
+				"client/*"
 			]
 		},
 		"sourceMap": true,

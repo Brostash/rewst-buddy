@@ -1,9 +1,9 @@
-export { DeleteTemplate } from './DeleteTemplate.js';
+export { DeleteTemplate } from './DeleteTemplate';
 export {
     ChangeTemplateFiletypeYAML,
     ChangeTemplateFiletypeHTML,
     ChangeTemplateFiletypePowershell,
     ChangeTemplateFiletypeCustom
-} from './ChangeTemplateFileype.js'
-export { CreateTemplate } from './CreateTemplate.js'
-export { CreateTemplateFolder } from './CreateTemplateFolder.js'
+} from './ChangeTemplateFileype'
+export { CreateTemplate } from './CreateTemplate'
+export { CreateTemplateFolder } from './CreateTemplateFolder'
