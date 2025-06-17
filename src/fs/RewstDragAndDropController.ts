@@ -1,6 +1,7 @@
 import vscode from "vscode";
 import RewstFS from "./RewstFS";
 import { Entry, TemplateFolder } from "./models";
+import { log } from '@log';
 
 export default class RewstDragAndDropController
   implements vscode.TreeDragAndDropController<Entry> {
@@ -18,7 +19,7 @@ export default class RewstDragAndDropController
         JSON.stringify(source.map((s) => s.getUri().toString()))
       )
     );
-    console.log(`Dropped onto ${source}`);
+    log.info(`Dropped onto ${source}`);
   }
   async handleDrop?(
     target: Entry | undefined,

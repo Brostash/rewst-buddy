@@ -2,6 +2,7 @@ import vscode from "vscode";
 import { GraphQLClient } from "graphql-request";
 import { getSdk, Sdk } from "@sdk";
 import RewstProfile, { RewstProfiles } from "./models/RewstProfiles";
+import { log } from '@log';
 
 function parseCookieString(cookieString: string): Record<string, string> {
   const cookies: Record<string, string> = {};
@@ -10,7 +11,7 @@ function parseCookieString(cookieString: string): Record<string, string> {
     cookies[key] = value;
   });
   return cookies;
-}
+};
 
 export default class RewstClient {
   private static readonly endpoint = "https://api.rewst.io/graphql";
@@ -78,7 +79,7 @@ export default class RewstClient {
       try {
         return await RewstClient.create(context, profile.orgId);
       } catch (err) {
-        console.log(
+        log.info(
           `Failed to make client for ${profile.orgId} with eror: ${err}`
         );
         return undefined;
@@ -87,7 +88,7 @@ export default class RewstClient {
 
     const results = await Promise.all(resultsPromises);
 
-    console.log(`loaded clients: ${results}`);
+    log.info(`loaded clients: ${results}`);
 
     const clients = results.filter((c) => c !== undefined);
     return clients;
@@ -184,7 +185,7 @@ export default class RewstClient {
     await this.secrets.store(this.orgId, appSession);
 
     this.sdk = sdk;
-    console.log(`Refreshed token and sdk for ${this.orgId}`);
+    log.info(`Refreshed token and sdk for ${this.orgId}`);
   }
 
   private static async getToken(

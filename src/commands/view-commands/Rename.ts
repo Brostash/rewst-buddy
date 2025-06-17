@@ -1,20 +1,21 @@
 import { Template, TemplateFolder } from "@fs/models";
 import GenericCommand from "../models/GenericCommand";
 import vscode from "vscode";
+import { log } from '@log';
 
 export class Rename extends GenericCommand {
   commandName = "Rename";
   async execute(...args: any): Promise<unknown> {
     const entry = args[0][0] ?? undefined;
-    console.log(`Rename`);
-    console.log(entry);
+    log.info(`Rename`);
+    log.info(entry);
 
     if (entry instanceof Template) {
-      console.log("Processing a Template");
+      log.info("Processing a Template");
     } else if (entry instanceof TemplateFolder) {
-      console.log("Processing a TemplateFolder");
+      log.info("Processing a TemplateFolder");
     } else {
-      console.log("Not instance of detected type");
+      log.info("Not instance of detected type");
     }
 
     const label = await vscode.window.showInputBox({
@@ -27,7 +28,7 @@ export class Rename extends GenericCommand {
       },
     });
 
-    console.log(`new label ${label}`);
+    log.info(`new label ${label}`);
     await entry.setLabel(label);
 
     vscode.commands.executeCommand("rewst-buddy.RefreshView");

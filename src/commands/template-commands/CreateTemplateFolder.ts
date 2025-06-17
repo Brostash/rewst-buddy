@@ -6,6 +6,8 @@ import {
   TemplateFolder,
   EntryInput
 } from "@fs/models";
+import { log } from '@log';
+
 
 export class CreateTemplateFolder extends GenericCommand {
   commandName = "CreateTemplateFolder";
@@ -25,7 +27,7 @@ export class CreateTemplateFolder extends GenericCommand {
     });
 
     if (!label) {
-      console.log("No label provided, exiting Folder Creation");
+      log.info("No label provided, exiting Folder Creation");
       return;
     }
 

@@ -12,16 +12,14 @@ import { log } from "@log";
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export async function activate(context: vscode.ExtensionContext) {
-  // Use the console to output diagnostic information (console.log) and errors (console.error)
+  // Use the console to output diagnostic information (log.info) and errors (console.error)
   // This line of code will only be executed once when your extension is activated
-  console.log('Congratulations, your extension "rewst-buddy" is now active!');
 
-  log.info("test", true);
   log.init(context);
-  log.info("test");
+  log.info('Congratulations, your extension "rewst-buddy" is now active!');
+
 
   const view = new RewstView(context);
-  // view.addSampleData();
 
   const ctx: CommandContext = {
     commandPrefix: "rewst-buddy",
@@ -34,7 +32,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   CommandInitiater.registerCommands(ctx);
 
-  console.log("Done loading");
+  log.info("Done loading");
 }
 
 // This method is called when your extension is deactivated

@@ -30,7 +30,7 @@ const config = {
       '@fs': path.resolve(__dirname, 'src/fs/'),
       '@commands': path.resolve(__dirname, 'src/commands/'),
       '@client': path.resolve(__dirname, 'src/client/'),
-      '@sdk': path.resolve(__dirname, 'src/client/'),
+      '@sdk': path.resolve(__dirname, 'src/graphql_sdk.ts'),
       '@log': path.resolve(__dirname, 'src/log.ts'),
     },
     modules: [path.resolve(__dirname, 'src'), 'node_modules']

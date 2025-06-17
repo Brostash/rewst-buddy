@@ -4,12 +4,58 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "watch",
+			"dependsOn": [
+				"npm: watch:tsc",
+				"npm: watch:webpack"
+			],
+			"presentation": {
+				"reveal": "never"
+			},
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
 			"type": "npm",
 			"script": "watch:webpack",
 			"group": "build",
-			"problemMatcher": [],
+			"problemMatcher": {
+				"owner": "webpack",
+				"pattern": [
+					{
+						"regexp": "ERROR in (.*) (\\d+):(\\d+)",
+						"file": 1,
+						"line": 2,
+						"column": 3,
+						"message": 0
+					}
+				],
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": ".*",
+					"endsPattern": "compiled successfully|Compilation complete"
+				}
+			},
+			"isBackground": true,
 			"label": "npm: watch:webpack",
-			"detail": "webpack --mode development --watch"
+			"presentation": {
+				"group": "watch",
+				"reveal": "never"
+			}
+		},
+		{
+			"type": "npm",
+			"script": "watch:tsc",
+			"group": "build",
+			"problemMatcher": "$tsc-watch",
+			"isBackground": true,
+			"label": "npm: watch:tsc",
+			"presentation": {
+				"group": "watch",
+				"reveal": "never"
+			}
 		}
 	]
 }

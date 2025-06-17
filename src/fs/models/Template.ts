@@ -2,6 +2,7 @@ import { FileType } from "vscode";
 import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import vscode from "vscode";
 import { TemplateFolder } from "./TemplateFolder";
+import { log } from '@log';
 
 export class Template extends Entry {
   rtype: RType = RType.Template;
@@ -26,12 +27,12 @@ export class Template extends Entry {
   }
 
   async readData(): Promise<string> {
-    console.log(` loading template ${this.id}`);
+    log.info(` loading template ${this.id}`);
     const response = await this.client.sdk.getTemplateBody({ id: this.id });
     if (typeof response.template?.body !== "string") {
       throw new Error(`Couldn't load template ${this.id}`);
     }
-    console.log(`Done loading template ${this.id}`);
+    log.info(`Done loading template ${this.id}`);
     return response.template.body;
   }
 
@@ -57,7 +58,7 @@ export class Template extends Entry {
     if (response.updateTemplate?.name !== label) {
       const message = `failed to update template with new name ${label}`;
       vscode.window.showErrorMessage(message);
-      console.log(message);
+      log.info(message);
       return false;
     }
     return true;

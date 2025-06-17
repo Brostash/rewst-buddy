@@ -2,6 +2,7 @@ import vscode from "vscode";
 import RewstFS from "./RewstFS";
 import { Entry } from "./models";
 import RewstDragAndDropController from "./RewstDragAndDropController";
+import { log } from '@log';
 
 export default class RewstView
   implements vscode.TreeDataProvider<vscode.TreeItem> {
@@ -50,7 +51,7 @@ export default class RewstView
   }
 
   getParent(element: Entry): Entry | undefined {
-    console.log(`getParent ${element}`);
+    log.info(`getParent ${element}`);
     return element.parent;
   }
 
