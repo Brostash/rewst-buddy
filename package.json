@@ -30,6 +30,22 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Settings Editor Rewst-Buddy",
+      "type": "object",
+      "properties": {
+        "rewst-buddy.maxLogSize": {
+          "type": "number",
+          "default": 1000,
+          "description": "Maximum log file size in KB before rotation (e.g., 1000 for ~1MB)."
+        },
+        "rewst-buddy.maxLogFiles": {
+          "type": "number",
+          "default": 7,
+          "description": "Maximum number of log files before the oldest is purged"
+        }
+      }
+    },
     "commands": [
       {
         "command": "rewst-buddy.NewClient",
@@ -76,6 +92,10 @@
       {
         "command": "rewst-buddy.CopyId",
         "title": "Copy ID"
+      },
+      {
+        "command": "rewst-buddy.OpenLogs",
+        "title": "Rewst-Buddy: Open Logs"
       },
       {
         "command": "rewst-buddy.DeleteTemplate",
