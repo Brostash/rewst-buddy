@@ -1,7 +1,7 @@
-import * as vscode from "vscode";
+import vscode from "vscode";
 import RewstFS from "@fs/RewstFS";
 import RewstView from "@fs/RewstView";
-import { Logger } from "logger";
+import { log } from "@log";
 import Storage from "storage/Storage";
 
 export interface CommandContext {
@@ -10,19 +10,16 @@ export interface CommandContext {
   fs: RewstFS;
   view: RewstView;
   storage: Storage;
-  log: Logger;
 }
 
 export default abstract class GenericCommand {
   abstract commandName: string;
   context: vscode.ExtensionContext;
   secrets: vscode.SecretStorage;
-  log: Logger;
 
   constructor(public cmdContext: CommandContext) {
     this.context = cmdContext.context;
     this.secrets = this.context.secrets;
-    this.log = this.cmdContext.log;
   }
 
   abstract execute(...args: unknown[]): Promise<unknown>;

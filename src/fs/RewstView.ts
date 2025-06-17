@@ -1,6 +1,6 @@
 import vscode from "vscode";
 import RewstFS from "./RewstFS";
-import { Entry } from "./models/";
+import { Entry } from "./models";
 import RewstDragAndDropController from "./RewstDragAndDropController";
 
 export default class RewstView

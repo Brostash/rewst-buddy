@@ -22,6 +22,12 @@
 			],
 			"@client/*": [
 				"client/*"
+			],
+			"@sdk": [
+				"graphql_sdk.ts"
+			],
+			"@log": [
+				"log.ts"
 			]
 		},
 		"sourceMap": true,

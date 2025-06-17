@@ -1,13 +1,13 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import * as vscode from "vscode";
+import vscode from "vscode";
 
 import RewstView from "@fs/RewstView";
 import { CommandContext } from "@commands/models/GenericCommand";
 import CommandInitiater from "@commands/models/CommandInitiater";
-import RewstClient from "client/RewstClient";
+import { RewstClient } from "@client/index";
 import Storage from "storage/Storage";
-import { Logger } from "logger";
+import { log } from "@log";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -16,8 +16,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // This line of code will only be executed once when your extension is activated
   console.log('Congratulations, your extension "rewst-buddy" is now active!');
 
-  const log = new Logger(context);
   log.info("test", true);
+  log.init(context);
+  log.info("test");
 
   const view = new RewstView(context);
   // view.addSampleData();
@@ -28,8 +29,8 @@ export async function activate(context: vscode.ExtensionContext) {
     view: view,
     fs: view.rewstfs,
     storage: new Storage(context),
-    log: log,
   };
+
 
   CommandInitiater.registerCommands(ctx);
 

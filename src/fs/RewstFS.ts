@@ -3,17 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as vscode from "vscode";
+import vscode from "vscode";
 import { Template, Tree } from "./models";
 
 export default class RewstFS implements vscode.FileSystemProvider {
   tree: Tree;
-  public static get scheme(): string {
-    return `rewstfs`;
-  }
-  public static get schema(): string {
-    return `${RewstFS.scheme}://`;
-  }
+  public static readonly scheme = `rewstfs`;
+  public static readonly schema = `${RewstFS.scheme}://`;
+
 
   public static uriOf(relPath: string) {
     return vscode.Uri.parse(`${RewstFS.schema}${relPath}`);

@@ -1,6 +1,6 @@
 import RewstClient from "client/RewstClient";
 import GenericCommand from "../models/GenericCommand";
-import * as vscode from "vscode";
+import vscode from "vscode";
 
 export class DeleteTemplate extends GenericCommand {
   commandName: string = "DeleteTemplate";

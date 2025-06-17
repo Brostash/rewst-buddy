@@ -1,8 +1,10 @@
 import RewstClient from "client/RewstClient";
 import GenericCommand from "../models/GenericCommand";
-import * as vscode from "vscode";
+import vscode from "vscode";
 import { createTemplate, Template } from "@fs/models";
 import { TemplateFolder } from "@fs/models";
+import { log } from "@log";
+
 
 export class CreateTemplate extends GenericCommand {
   commandName = "CreateTemplate";
@@ -23,7 +25,7 @@ export class CreateTemplate extends GenericCommand {
     });
 
     if (!label) {
-      this.log.error("No label provided, exiting Template Creation");
+      log.error("No label provided, exiting Template Creation");
       return;
     }
 

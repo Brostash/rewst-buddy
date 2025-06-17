@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import vscode from "vscode";
 import RewstFS from "./RewstFS";
 import { Entry, TemplateFolder } from "./models";
 

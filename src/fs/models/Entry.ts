@@ -1,5 +1,5 @@
 import * as path from "path";
-import * as vscode from "vscode";
+import vscode from "vscode";
 import RewstFS from "../RewstFS";
 import { uuidv7 } from "uuidv7";
 import { isDirective } from "graphql";

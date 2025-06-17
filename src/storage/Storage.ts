@@ -4,7 +4,7 @@ import {
   OrgVariableCategory,
 } from "graphql_sdk";
 import RewstClient from "client/RewstClient";
-import * as vscode from "vscode";
+import vscode from "vscode";
 
 export default class Storage {
   key = "RewstOrgData";

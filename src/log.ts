@@ -1,16 +1,17 @@
-import * as vscode from "vscode";
+import vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { CommandContext } from "@commands/models/GenericCommand";
 
-export class Logger {
+class Logger {
   private extName = "rewst-buddy";
   private output = vscode.window.createOutputChannel(this.extName);
-  public logFile: string;
-  private maxLogSize: number;
-  private maxLogFiles: number;
+  public logFile = "";
+  private maxLogSize = 1000;
+  private maxLogFiles = 1;
+  private intialized = false;
 
-  constructor(context: vscode.ExtensionContext) {
+  public init(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration(this.extName);
     this.maxLogSize = config.get<number>("maxLogSize", 1000) * 1000;
     this.maxLogFiles = config.get<number>("maxLogFiles", 7);
@@ -18,11 +19,12 @@ export class Logger {
     const logFilePath = vscode.Uri.joinPath(context.globalStorageUri);
     this.logFile = path.join(logFilePath.fsPath, `${this.extName}.log`);
     this.ensureLogDirAndFile();
-
-    this.rotateLogIfNeeded(this.logFile, this.maxLogSize, this.maxLogFiles);
   }
 
   private ensureLogDirAndFile() {
+    if (!this.intialized) {
+      return;
+    }
     const dir = path.dirname(this.logFile);
     // Ensure directory exists
     if (!fs.existsSync(dir)) {
@@ -43,6 +45,8 @@ export class Logger {
   }
 
   private log(level: string, message: any, showToUser: boolean) {
+    this.rotateLogIfNeeded(this.logFile, this.maxLogSize, this.maxLogFiles);
+
     let formatted: string;
     const date = new Date().toLocaleTimeString();
 
@@ -61,7 +65,9 @@ export class Logger {
 
     try {
       this.ensureLogDirAndFile();
-      fs.appendFileSync(this.logFile, formatted + "\n");
+      if (this.intialized) {
+        fs.appendFileSync(this.logFile, formatted + "\n");
+      }
     } catch (err) {
       this.output.appendLine(
         `[LOGGER ERROR] Failed to write to log file: ${err}`
@@ -69,18 +75,23 @@ export class Logger {
     }
 
     if (showToUser) {
-      if (level === "ERROR")
+      if (level === "ERROR") {
         vscode.window.showErrorMessage(
           typeof message === "string" ? message : "Error occurred (see log)"
         );
-      else
+      }
+      else {
         vscode.window.showInformationMessage(
           typeof message === "string" ? message : "See log for details."
         );
+      }
     }
   }
 
   rotateLogIfNeeded(logFile: string, maxSizeBytes: number, maxFiles: number) {
+    if (!this.intialized) {
+      return;
+    }
     if (fs.existsSync(logFile)) {
       const stats = fs.statSync(logFile);
       if (stats.size > maxSizeBytes) {
@@ -88,7 +99,7 @@ export class Logger {
         for (let i = maxFiles - 1; i >= 1; i--) {
           const src = `${logFile}.${i}`;
           const dest = `${logFile}.${i + 1}`;
-          if (fs.existsSync(src)) fs.renameSync(src, dest);
+          if (fs.existsSync(src)) { fs.renameSync(src, dest); }
         }
         fs.renameSync(logFile, `${logFile}.1`);
         fs.writeFileSync(logFile, ""); // Create new log file
@@ -96,3 +107,5 @@ export class Logger {
     }
   }
 }
+
+export const log = new Logger();

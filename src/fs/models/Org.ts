@@ -1,7 +1,7 @@
 import { Template } from "./Template";
 import { Entry, ContextValueParams, RType } from "./Entry";
 import Storage from "storage/Storage";
-import * as vscode from "vscode";
+import vscode from "vscode";
 import RewstFS from "@fs/RewstFS";
 
 export interface AlmostOrgInput {

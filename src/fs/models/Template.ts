@@ -1,6 +1,6 @@
 import { FileType } from "vscode";
 import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
-import * as vscode from "vscode";
+import vscode from "vscode";
 import { TemplateFolder } from "./TemplateFolder";
 
 export class Template extends Entry {

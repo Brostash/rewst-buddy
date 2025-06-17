@@ -1,8 +1,7 @@
-import * as vscode from "vscode";
+import vscode from "vscode";
 import { GraphQLClient } from "graphql-request";
-import { getSdk, Sdk } from "../graphql_sdk";
+import { getSdk, Sdk } from "@sdk";
 import RewstProfile, { RewstProfiles } from "./models/RewstProfiles";
-import assert from "assert";
 
 function parseCookieString(cookieString: string): Record<string, string> {
   const cookies: Record<string, string> = {};
@@ -14,9 +13,7 @@ function parseCookieString(cookieString: string): Record<string, string> {
 }
 
 export default class RewstClient {
-  private static get endpoint(): string {
-    return "https://api.rewst.io/graphql";
-  }
+  private static readonly endpoint = "https://api.rewst.io/graphql";
   private context: vscode.ExtensionContext;
   private secrets: vscode.SecretStorage;
 

@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import vscode from "vscode";
 import { Entry, EntryInput, RType } from "./Entry";
 import RewstFS from "../RewstFS";
 import path from "path";

@@ -13,7 +13,8 @@ export default tseslint.config(
 		ignores: [
 			'out',
 			'dist',
-			'webpack.config.cjs'
+			'webpack.config.cjs',
+			'graphql_sdk.ts'
 		]
 	},
 	js.configs.recommended,

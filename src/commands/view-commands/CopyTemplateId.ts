@@ -1,6 +1,6 @@
 import { Entry } from "@fs/models";
 import GenericCommand from "../models/GenericCommand";
-import * as vscode from "vscode";
+import vscode from "vscode";
 
 export class CopyId extends GenericCommand {
   commandName = "CopyId";

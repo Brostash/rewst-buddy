@@ -1,6 +1,6 @@
 import { Template, TemplateFolder } from "@fs/models";
 import GenericCommand from "../models/GenericCommand";
-import * as vscode from "vscode";
+import vscode from "vscode";
 
 export class Rename extends GenericCommand {
   commandName = "Rename";
