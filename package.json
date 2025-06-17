@@ -1,6 +1,5 @@
 {
   "publisher": "JBramley",
-  "type": "module",
   "name": "rewst-buddy",
   "displayName": "rewst-buddy",
   "description": "Buddy for Rewst (Templates)",
@@ -28,7 +27,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
       "title": "Settings Editor Rewst-Buddy",
@@ -199,12 +198,13 @@
     "codegen": "graphql-codegen --config src/codegen.ts",
     "lint": "eslint src",
     "check-types": "tsc --noEmit --watch",
-    "minify": "node esbuild.js --production",
     "test": "vscode-test",
-    "compile": "node esbuild.js && npm run check-types",
     "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json"
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "watch:webpack": "webpack --mode development --watch",
+    "compile": "webpack --mode development",
+    "vscode:prepublish": "npm run package",
+    "package": "webpack --mode production --devtool hidden-source-map"
   },
   "devDependencies": {
     "@0no-co/graphqlsp": "^1.12.16",
@@ -216,6 +216,7 @@
     "@graphql-codegen/typescript-graphql-request": "^6.2.1",
     "@graphql-codegen/typescript-operations": "^4.6.1",
     "@parcel/watcher": "^2.5.1",
+    "@stylistic/eslint-plugin": "^4.4.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.17.51",
     "@types/vscode": "^1.100.0",
@@ -228,8 +229,11 @@
     "globals": "^16.2.0",
     "graphql": "^16.11.0",
     "graphql-request": "^7.1.2",
+    "ts-loader": "^9.5.2",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.33.0"
+    "typescript-eslint": "^8.33.0",
+    "webpack": "^5.99.9",
+    "webpack-cli": "^6.0.1"
   },
   "dependencies": {
     "uuidv7": "^1.0.2"
