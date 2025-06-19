@@ -5,3 +5,4 @@ node_modules
 *.vsix
 src/graphql_sdk.ts
 src\graphql_sdk.ts
+tsconfig.tsbuildinfo
