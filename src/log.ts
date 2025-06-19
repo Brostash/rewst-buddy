@@ -40,8 +40,11 @@ class Logger {
     this.log("INFO", message, showToUser);
   }
 
-  error(message: any, showToUser = true) {
+  error(message: any, showToUser = true, raise = false) {
     this.log("ERROR", message, showToUser);
+    if (raise) {
+      throw new Error(message);
+    }
   }
 
   private log(level: string, message: any, showToUser: boolean) {
