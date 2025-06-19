@@ -1,15 +1,25 @@
-import * as path from "path";
+import path from "path";
 import vscode from "vscode";
 import RewstFS from "../RewstFS";
 import { uuidv7 } from "uuidv7";
 import { isDirective } from "graphql";
 import { RewstClient } from "@client/index";
+import { log } from "@log";
+import { CommandContext } from "@commands/models/GenericCommand";
 
 export enum RType {
   Root,
   Org,
   Template,
   TemplateFolder,
+}
+
+export interface ContextValueParams {
+  isTemplate: boolean;
+  hasTemplates: boolean;
+  hasTemplateFolders: boolean;
+  isRenamable: boolean;
+  isTemplateFolder: boolean;
 }
 
 export interface EntryInput {
@@ -20,13 +30,6 @@ export interface EntryInput {
   parent?: Entry;
 }
 
-export interface ContextValueParams {
-  isTemplate: boolean;
-  hasTemplates: boolean;
-  hasTemplateFolders: boolean;
-  isRenamable: boolean;
-  isTemplateFolder: boolean;
-}
 
 interface IEntry extends EntryInput, vscode.TreeItem, vscode.FileStat {
   rtype: RType;
@@ -50,8 +53,7 @@ interface IEntry extends EntryInput, vscode.TreeItem, vscode.FileStat {
   removeChild(child: Entry): boolean;
   setParent(newParent: Entry): void;
 
-  serialize(): string | Promise<string>;
-  deserialize(): Entry | Promise<Entry>;
+  serialize(): Promise<string>;
 
   getCommand(): vscode.Command | Promise<vscode.Command>;
   getTreeItem(): Promise<vscode.TreeItem>;
@@ -61,7 +63,7 @@ interface IEntry extends EntryInput, vscode.TreeItem, vscode.FileStat {
 }
 
 export abstract class Entry implements IEntry {
-  abstract contextValueParams: ContextValueParams;
+  contextValueParams: ContextValueParams;
   abstract rtype: RType;
 
   initialized = false;
@@ -97,7 +99,7 @@ export abstract class Entry implements IEntry {
     }
     | undefined;
 
-  constructor(input: EntryInput) {
+  constructor(input: EntryInput, contextValueParams: ContextValueParams) {
     if (typeof input?.label !== "string") {
       throw new Error("");
     }
@@ -116,6 +118,14 @@ export abstract class Entry implements IEntry {
       this.setParent(input.parent);
     }
 
+    this.contextValueParams = contextValueParams ?? {
+      isTemplate: false,
+      hasTemplates: false,
+      hasTemplateFolders: false,
+      isRenamable: false,
+      isTemplateFolder: false,
+    };
+
     this.contextValue = this.getContextValue();
   }
 
@@ -132,8 +142,7 @@ export abstract class Entry implements IEntry {
 
   abstract getCommand(): vscode.Command;
 
-  abstract serialize(): string | Promise<string>;
-  abstract deserialize(): Entry | Promise<Entry>;
+  abstract serialize(): Promise<string>;
 
   abstract setLabel(label: string): void | Promise<boolean>;
 
@@ -190,7 +199,7 @@ export abstract class Entry implements IEntry {
   }
 
   isValidLabel(label: string): boolean {
-    return /^[a-zA-Z0-9\[\]\- ]*$/.test(label);
+    return /^[a-zA-Z0-9[\]\- ]*$/.test(label);
   }
 
   getContextValue(
@@ -206,4 +215,18 @@ export abstract class Entry implements IEntry {
 
     return classes.join(" ");
   }
+
+  static async create(cmdContext: CommandContext, ...args: any): Promise<Entry> {
+    log.error("Can't create abstract Entry", false, true);
+    throw new Error("");
+  }
+}
+
+
+interface StaticCreate<T> {
+  create(...args: any): Promise<T> | T;
+}
+
+export function staticCreate<T>(ctor: StaticCreate<T>, cmdContext: CommandContext, ...args: any) {
+  return ctor.create(cmdContext, ...args);
 }

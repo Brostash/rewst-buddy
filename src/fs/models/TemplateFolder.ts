@@ -31,13 +31,18 @@ export class TemplateFolder extends Entry {
     };
   }
   rtype: RType = RType.TemplateFolder;
-  contextValueParams: ContextValueParams = {
-    hasTemplates: true,
-    hasTemplateFolders: true,
-    isRenamable: true,
-    isTemplateFolder: true,
-    isTemplate: false,
-  };
+
+
+  constructor(input: EntryInput) {
+    super(input, {
+      hasTemplates: true,
+      hasTemplateFolders: true,
+      isRenamable: true,
+      isTemplateFolder: true,
+      isTemplate: false,
+    });
+  }
+
   async serialize(): Promise<string> {
     throw new Error("Method not implemented.");
   }
