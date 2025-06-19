@@ -1,8 +1,11 @@
 import { Template } from "./Template";
-import { Entry, ContextValueParams, RType } from "./Entry";
+import { Entry, ContextValueParams, RType, EntryInput } from "./Entry";
 import Storage from "storage/Storage";
 import vscode from "vscode";
 import RewstFS from "@fs/RewstFS";
+import { log } from "@log";
+import { RewstClient } from "@client/index";
+import { CommandContext } from "@commands/models/GenericCommand";
 
 export interface AlmostOrgInput {
   label: string;
@@ -27,6 +30,17 @@ export class AlmostOrg extends vscode.TreeItem {
 }
 
 export class Org extends Entry {
+  constructor(input: EntryInput) {
+    super(input, {
+      hasTemplates: false,
+      hasTemplateFolders: false,
+      isRenamable: false,
+      isTemplateFolder: false,
+      isTemplate: false,
+    });
+  }
+
+  rtype = RType.Org;
   getCommand(): vscode.Command {
     throw new Error("Method not implemented.");
   }
@@ -36,10 +50,7 @@ export class Org extends Entry {
   writeData(data: string): Promise<boolean> {
     throw new Error("Method not implemented.");
   }
-  serialize(): string {
-    throw new Error("Method not implemented.");
-  }
-  deserialize<T extends Entry>(): T {
+  serialize(): Promise<string> {
     throw new Error("Method not implemented.");
   }
   setLabel(label: string): void {
@@ -61,20 +72,22 @@ export class Org extends Entry {
     this.initialized = true;
   }
 
-  contextValueParams: ContextValueParams = {
-    hasTemplates: false,
-    hasTemplateFolders: false,
-    isRenamable: false,
-    isTemplateFolder: true,
-    isTemplate: false,
-  };
-  rtype = RType.Org;
+
 
   getUri(): vscode.Uri {
     return RewstFS.uriOf(`/${this.orgId}`);
   }
+
+  static async create(cmdContext: CommandContext, ...args: any): Promise<Org> {
+    const client = await RewstClient.create(cmdContext.context);
+
+    const orgInput: EntryInput = {
+      client: client,
+      id: client.orgId,
+      label: client.label,
+    };
+
+    return new Org(orgInput);
+  }
 }
 
-export async function createOrg(orgId: string): Promise<Org> {
-  throw new Error("Not implemented yet");
-}

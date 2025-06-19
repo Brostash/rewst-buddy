@@ -221,12 +221,3 @@ export abstract class Entry implements IEntry {
     throw new Error("");
   }
 }
-
-
-interface StaticCreate<T> {
-  create(...args: any): Promise<T> | T;
-}
-
-export function staticCreate<T>(ctor: StaticCreate<T>, cmdContext: CommandContext, ...args: any) {
-  return ctor.create(cmdContext, ...args);
-}

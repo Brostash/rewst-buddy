@@ -1,6 +1,6 @@
 import GenericCommand from "../models/GenericCommand";
 import { RewstClient } from "@client/index";
-import { Org, createOrg } from "@fs/models";
+import { Entry, Org } from "@fs/models";
 
 
 export class LoadClients extends GenericCommand {
@@ -12,9 +12,12 @@ export class LoadClients extends GenericCommand {
     const clients = await RewstClient.LoadClients(this.context);
 
     for (const client of clients) {
-      const org = await createOrg(client.orgId);
+      const org = await Org.create(this.cmdContext, client.orgId);
+
       view.rewstfs.tree.newOrg(org);
     }
+
+    this.cmdContext.view.refresh();
 
     return;
   }
