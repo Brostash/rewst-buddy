@@ -1,8 +1,9 @@
 import vscode from "vscode";
 import { GraphQLClient } from "graphql-request";
-import { getSdk, Sdk } from "@sdk";
+import { getSdk, Sdk, SdkFunctionWrapper } from "@sdk";
 import RewstProfile, { RewstProfiles } from "./models/RewstProfiles";
-import { log } from '@log';
+import { log } from "@log";
+import { createRetryWrapper, createMockWrapper } from "./wrappers";
 
 function parseCookieString(cookieString: string): Record<string, string> {
   const cookies: Record<string, string> = {};
@@ -11,7 +12,7 @@ function parseCookieString(cookieString: string): Record<string, string> {
     cookies[key] = value;
   });
   return cookies;
-};
+}
 
 export default class RewstClient {
   private static readonly endpoint = "https://api.rewst.io/graphql";
@@ -127,8 +128,20 @@ export default class RewstClient {
       }),
     });
 
-    const sdk = getSdk(client);
+    // Determine wrapper based on environment/flags
+    const wrapper = RewstClient.getWrapper();
+    const sdk = getSdk(client, wrapper);
     return sdk;
+  }
+
+  private static getWrapper(): SdkFunctionWrapper | undefined {
+    // Check for test/mock environment
+    if (process.env.NODE_ENV === "test" || process.env.REWST_MOCK === "true") {
+      return createMockWrapper();
+    }
+
+    // Default to retry wrapper for production
+    return createRetryWrapper();
   }
 
   private static async validateSdk(sdk: Sdk): Promise<boolean> {

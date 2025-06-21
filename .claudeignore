@@ -1,0 +1,28 @@
+
+  # Dependencies
+  node_modules/
+  npm-debug.log*
+
+  # Build outputs
+  dist/
+  build/
+  *.vsix
+
+  # Generated files
+  coverage/
+  *.tsbuildinfo
+
+  # Development/testing
+  .vscode-test/
+
+  # Logs and temp files
+  *.log
+  .DS_Store
+  Thumbs.db
+
+  # Package manager files
+  package-lock.json
+
+  # Large config files (optional)
+  webpack.config.cjs
+  eslint.config.mjs
