@@ -1,11 +1,19 @@
 import { Template } from "./Template";
 import { Entry, ContextValueParams, RType, EntryInput } from "./Entry";
+import { TemplateFolder, SerializableTemplateFolder } from "./TemplateFolder";
 import Storage from "storage/Storage";
 import vscode from "vscode";
 import RewstFS from "@fs/RewstFS";
 import { log } from "@log";
 import { RewstClient } from "@client/index";
 import { CommandContext } from "@commands/models/GenericCommand";
+
+export interface SerializableOrg {
+  orgId: string;
+  orgLabel: string;
+  lastSync: number;
+  folderStructure: SerializableTemplateFolder[];
+}
 
 export interface AlmostOrgInput {
   label: string;
@@ -50,8 +58,25 @@ export class Org extends Entry {
   writeData(data: string): Promise<boolean> {
     throw new Error("Method not implemented.");
   }
-  serialize(): Promise<string> {
-    throw new Error("Method not implemented.");
+  async serialize(): Promise<string> {
+    // Get all folders in the org tree using the instance method
+    const folderMap = await this.getAllEntriesOfType(RType.TemplateFolder, TemplateFolder);
+    
+    // Serialize each folder
+    const folderStructure: SerializableTemplateFolder[] = [];
+    for (const folder of folderMap.values()) {
+      const serializedFolder = await folder.serialize();
+      folderStructure.push(JSON.parse(serializedFolder));
+    }
+
+    const serializable: SerializableOrg = {
+      orgId: this.orgId,
+      orgLabel: this.label,
+      lastSync: Date.now(),
+      folderStructure
+    };
+
+    return JSON.stringify(serializable);
   }
   setLabel(label: string): void {
     throw new Error("Method not implemented.");

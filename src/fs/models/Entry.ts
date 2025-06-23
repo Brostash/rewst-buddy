@@ -30,7 +30,6 @@ export interface EntryInput {
   parent?: Entry;
 }
 
-
 interface IEntry extends EntryInput, vscode.TreeItem, vscode.FileStat {
   rtype: RType;
   orgId: string;
@@ -93,10 +92,10 @@ export abstract class Entry implements IEntry {
   checkboxState?:
     | vscode.TreeItemCheckboxState
     | {
-      readonly state: vscode.TreeItemCheckboxState;
-      readonly tooltip?: string;
-      readonly accessibilityInformation?: vscode.AccessibilityInformation;
-    }
+        readonly state: vscode.TreeItemCheckboxState;
+        readonly tooltip?: string;
+        readonly accessibilityInformation?: vscode.AccessibilityInformation;
+      }
     | undefined;
 
   constructor(input: EntryInput, contextValueParams: ContextValueParams) {
@@ -216,7 +215,31 @@ export abstract class Entry implements IEntry {
     return classes.join(" ");
   }
 
-  static async create(cmdContext: CommandContext, ...args: any): Promise<Entry> {
+  async getAllEntriesOfType<T extends Entry>(
+    rtype: RType,
+    TypeClass: new (...args: any[]) => T
+  ): Promise<Map<string, T>> {
+    const results = new Map<string, T>();
+
+    const queue: Entry[] = await this.getChildren();
+
+    while (queue.length) {
+      const top = queue.shift();
+      if (top === undefined) {
+        continue;
+      } else if (top.rtype === rtype && top instanceof TypeClass) {
+        results.set(top.id, top);
+      }
+      queue.push(...top.children);
+    }
+
+    return results;
+  }
+
+  static async create(
+    cmdContext: CommandContext,
+    ...args: any
+  ): Promise<Entry> {
     log.error("Can't create abstract Entry", false, true);
     throw new Error("");
   }

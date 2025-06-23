@@ -30,6 +30,7 @@ VS Code extension for Rewst automation platform integration. Provides advanced t
 - **Templates** are file-like objects which are used to store scripts, html, and other content for easy inclusion into workflows.
   - These have some content type markers, but there is no actual restriction on the content they can hold.
   - We are primary concerned with streamlining the management, and organization of templates
+  - Only basic information about these should be stored on Org load, we lazy load the content if editing is wanted
 - **Workflows** are json based state machines which define a sequence actions and transitions between them
   - input/output of standard data types can by indicated
   - workflows can have actions which are other workflows
@@ -44,10 +45,11 @@ VS Code extension for Rewst automation platform integration. Provides advanced t
 
 - Since we are in a vscode ext, we are type module using `import { GraphQLClient } from "graphql-request"` imports. Do not use `require` unless OUTSIDE of `src`
 - Use npm scripts defined in @package.json instead of one-off npx scripts
-- Add paths to webpack.config.cjs and tsconfig.json to use `@path` convention, DO NOT USER `../../../type` imports
+- Add paths to webpack.config.cjs and tsconfig.json to use `@path` convention, DO NOT USE `../../../type` imports
 - Output is to `dist` folder
 - Source files are in `src` folder
 - We use ESLint defined in `eslint.config.mjs`
+- use `log.info()` or `log.error()` from `@log` for logging. This is initialized in extension.ts. All parts of development should make use of this logging.
 
 ## Development Commands (prefer npm scripts)
 

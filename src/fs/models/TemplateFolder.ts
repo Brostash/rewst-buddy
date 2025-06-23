@@ -2,25 +2,12 @@ import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import vscode from "vscode";
 import { Template } from "./Template";
 
-export async function getTemplateMap(
-  folder: TemplateFolder
-): Promise<Map<string, Template>> {
-  const templates = new Map<string, Template>();
-
-  const queue: Entry[] = await folder.getChildren();
-
-  while (queue.length) {
-    const top = queue.shift();
-    if (top === undefined) {
-      continue;
-    } else if (top.rtype === RType.Template && top instanceof Template) {
-      templates.set(top.id, top);
-    } else {
-      queue.push(...top.children);
-    }
-  }
-
-  return templates;
+export interface SerializableTemplateFolder {
+  id: string;
+  label: string;
+  parentId?: string;
+  childFolderIds: string[];
+  templateIds: string[];
 }
 
 export class TemplateFolder extends Entry {
@@ -31,7 +18,6 @@ export class TemplateFolder extends Entry {
     };
   }
   rtype: RType = RType.TemplateFolder;
-
 
   constructor(input: EntryInput) {
     super(input, {
@@ -44,10 +30,23 @@ export class TemplateFolder extends Entry {
   }
 
   async serialize(): Promise<string> {
-    throw new Error("Method not implemented.");
-  }
-  deserialize<T extends Entry>(): T {
-    throw new Error("Method not implemented.");
+    const childFolderIds = this.children
+      .filter((child) => child instanceof TemplateFolder)
+      .map((child) => child.id);
+
+    const templateIds = this.children
+      .filter((child) => child instanceof Template)
+      .map((child) => child.id);
+
+    const serializable: SerializableTemplateFolder = {
+      id: this.id,
+      label: this.label,
+      parentId: this.parent?.id,
+      childFolderIds,
+      templateIds,
+    };
+
+    return JSON.stringify(serializable);
   }
   setLabel(label: string): void {
     this.label = label;

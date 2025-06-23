@@ -2,7 +2,7 @@ import { FileType } from "vscode";
 import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import vscode from "vscode";
 import { TemplateFolder } from "./TemplateFolder";
-import { log } from '@log';
+import { log } from "@log";
 
 export class Template extends Entry {
   rtype: RType = RType.Template;
@@ -67,12 +67,10 @@ export class Template extends Entry {
     return true;
   }
 
-  serialize(): Promise<string> {
-    throw new Error("Method not implemented.");
+  async serialize(): Promise<string> {
+    return "";
   }
-  deserialize<T>(): T {
-    throw new Error("Method not implemented.");
-  }
+
   initialize(): Promise<void> {
     this.initialized = true;
 
