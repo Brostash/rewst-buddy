@@ -4,6 +4,7 @@ import RewstFS from "../RewstFS";
 import path from "path";
 import { AlmostOrg, AlmostOrgInput } from "./Org";
 import RewstClient from "client/RewstClient";
+import { log } from "@log";
 
 interface ITree<T extends Entry> {
   lookupEntry(uri: vscode.Uri): Entry | undefined;
@@ -79,7 +80,76 @@ export class Tree implements ITree<Entry> {
   }
 
   removeEntry(uri: vscode.Uri): void {
-    throw new Error("Method not implemented.");
+    try {
+      const orgId = getOrgId(uri);
+      const parts = getUriParts(uri);
+
+      log.info(`Attempting to remove entry at URI: ${uri.toString()}`);
+
+      // Handle org-level removal (remove entire organization)
+      if (parts.length === 0 || (parts.length === 1 && parts[0] === "")) {
+        const org = this.orgs.get(orgId);
+        if (org) {
+          log.info(`Removing organization: ${org.label} (${orgId})`);
+          // Remove org from tree
+          this.orgs.delete(orgId);
+          // Clear all children to prevent memory leaks
+          org.children.forEach(child => {
+            child.parent = undefined;
+          });
+          org.children = [];
+          log.info(`Successfully removed organization: ${orgId}`);
+        } else {
+          log.error(`Organization not found for removal: ${orgId}`);
+          throw vscode.FileSystemError.FileNotFound(uri);
+        }
+        return;
+      }
+
+      // Handle child entry removal (template, template folder, etc.)
+      const entry = this.lookupEntry(uri);
+      if (!entry) {
+        log.error(`Entry not found for removal at URI: ${uri.toString()}`);
+        throw vscode.FileSystemError.FileNotFound(uri);
+      }
+
+      log.info(`Removing entry: ${entry.label} (${entry.id}) of type ${RType[entry.rtype]}`);
+
+      // Remove entry from its parent's children array
+      if (entry.parent) {
+        const removed = entry.parent.removeChild(entry);
+        if (!removed) {
+          log.error(`Failed to remove entry '${entry.id}' from parent '${entry.parent.id}'`);
+          throw new Error(`Failed to remove entry '${entry.id}' from parent`);
+        }
+        log.info(`Removed entry '${entry.id}' from parent '${entry.parent.id}'`);
+      } else {
+        log.info(`Entry '${entry.id}' has no parent, skipping parent removal`);
+      }
+
+      // Clear the entry's parent reference
+      entry.parent = undefined;
+
+      // If the entry has children, clear their parent references to prevent memory leaks
+      if (entry.children.length > 0) {
+        log.info(`Clearing ${entry.children.length} child references for entry '${entry.id}'`);
+        entry.children.forEach(child => {
+          child.parent = undefined;
+        });
+        entry.children = [];
+      }
+
+      log.info(`Successfully removed entry: ${entry.id}`);
+
+    } catch (error) {
+      if (error instanceof vscode.FileSystemError) {
+        log.error(`FileSystemError during removal: ${error.message}`);
+        throw error;
+      }
+      const errorMessage = `Failed to remove entry at URI '${uri.toString()}': ${error}`;
+      log.error(errorMessage);
+      throw new Error(errorMessage);
+    }
   }
 
   getOrgs(): vscode.TreeItem[] {

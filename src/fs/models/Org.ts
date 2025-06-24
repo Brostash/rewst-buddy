@@ -1,5 +1,6 @@
 import { Template } from "./Template";
 import { Entry, ContextValueParams, RType, EntryInput } from "./Entry";
+import { TemplateFolder } from "./TemplateFolder";
 import Storage from "storage/Storage";
 import vscode from "vscode";
 import RewstFS from "@fs/RewstFS";
@@ -41,8 +42,9 @@ export class Org extends Entry {
   }
 
   rtype = RType.Org;
-  getCommand(): vscode.Command {
-    throw new Error("Method not implemented.");
+  getCommand(): undefined {
+
+    return undefined;
   }
   readData(): Promise<string> {
     throw new Error("Method not implemented.");
@@ -60,16 +62,37 @@ export class Org extends Entry {
     if (this.initialized) {
       return;
     }
-    //something something create template folder and have it protected.
 
-    const response = await this.client.sdk.UserOrganization();
-    if (response.userOrganization === undefined) {
-      throw new Error("could not get org info");
+    try {
+      // Load organization data from API
+      const response = await this.client.sdk.UserOrganization();
+      if (response.userOrganization === undefined) {
+        throw new Error("could not get org info");
+      }
+      const org = response.userOrganization;
+      this.label = org?.name ?? "";
+
+      // Create the designated root template folder for this organization
+      // This is the centralized repository for all templates and subdirectories
+      const templateFolderInput: EntryInput = {
+        client: this.client,
+        // No id provided - will auto-generate UUIDv7 for unique identification
+        // TODO: Handle ID persistence from storage/cache for tree reconstruction
+        label: "Templates", // Standard name for the root template folder
+        parent: this,
+      };
+
+      const rootTemplateFolder = new TemplateFolder(templateFolderInput);
+
+      // The template folder will be added as a child via the parent constructor
+      // No need to manually call addChild as it's handled in the EntryInput.parent logic
+
+      log.info(`Initialized org '${this.label}' with root template folder (ID: ${rootTemplateFolder.id})`);
+      this.initialized = true;
+    } catch (error) {
+      log.error(`Failed to initialize org '${this.id}': ${error}`, false, true);
+      throw error;
     }
-    const org = response.userOrganization;
-    this.label = org?.name ?? "";
-
-    this.initialized = true;
   }
 
 

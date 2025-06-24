@@ -6,6 +6,7 @@ import { log } from '@log';
 
 export class Template extends Entry {
   rtype: RType = RType.Template;
+  collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
 
   type: FileType = FileType.File;
   data?: Uint8Array;

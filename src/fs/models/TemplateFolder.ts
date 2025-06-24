@@ -24,11 +24,8 @@ export async function getTemplateMap(
 }
 
 export class TemplateFolder extends Entry {
-  getCommand(): vscode.Command {
-    return {
-      title: "",
-      command: "",
-    };
+  getCommand(): undefined {
+    return undefined;
   }
   rtype: RType = RType.TemplateFolder;
 
@@ -64,7 +61,7 @@ export class TemplateFolder extends Entry {
 
       //load in all the templates
       const response = await this.client.sdk.listTemplatesMinimal({
-        orgId: this.id,
+        orgId: this.orgId,
       });
       const templates = response.templates;
 
