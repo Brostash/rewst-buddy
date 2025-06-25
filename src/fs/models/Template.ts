@@ -12,6 +12,7 @@ export class Template extends Entry {
   ext = "ps1";
 
   constructor(input: EntryInput) {
+    log.info(`Creating Template: ${input.label} (id: ${input.id})`);
     super(input, {
       hasTemplates: false,
       hasTemplateFolders: false,
@@ -40,31 +41,45 @@ export class Template extends Entry {
   }
 
   async writeData(data: string): Promise<boolean> {
-    const payload = {
-      id: this.id,
-      body: data,
-    };
-    const response = await this.client.sdk.UpdateTemplateBody(payload);
-    //some kinda validation
-    return true;
+    log.info(`Writing data to Template: ${this.label} (${this.id}), size: ${data.length} chars`);
+    try {
+      const payload = {
+        id: this.id,
+        body: data,
+      };
+      const response = await this.client.sdk.UpdateTemplateBody(payload);
+      //some kinda validation
+      log.info(`Successfully wrote data to Template: ${this.label}`);
+      return true;
+    } catch (error) {
+      log.error(`Failed to write data to Template ${this.label} (${this.id}): ${error}`);
+      throw error;
+    }
   }
 
   async setLabel(label: string): Promise<boolean> {
-    this.label = label;
+    log.info(`Setting label for Template ${this.id}: "${this.label}" -> "${label}"`);
+    try {
+      this.label = label;
 
-    const payload = {
-      id: this.id,
-      name: label,
-    };
+      const payload = {
+        id: this.id,
+        name: label,
+      };
 
-    const response = await this.client.sdk.UpdateTemplateName(payload);
-    if (response.updateTemplate?.name !== label) {
-      const message = `failed to update template with new name ${label}`;
-      vscode.window.showErrorMessage(message);
-      log.info(message);
+      const response = await this.client.sdk.UpdateTemplateName(payload);
+      if (response.updateTemplate?.name !== label) {
+        const message = `failed to update template with new name ${label}`;
+        vscode.window.showErrorMessage(message);
+        log.error(message);
+        return false;
+      }
+      log.info(`Successfully updated Template label to: ${label}`);
+      return true;
+    } catch (error) {
+      log.error(`Failed to set label for Template ${this.id}: ${error}`);
       return false;
     }
-    return true;
   }
 
   async serialize(): Promise<string> {
@@ -72,19 +87,62 @@ export class Template extends Entry {
   }
 
   initialize(): Promise<void> {
-    this.initialized = true;
-
+    log.info(`Initializing Template: ${this.label} (${this.id})`);
+    
     if (this.client === undefined) {
+      log.error(`Template ${this.id} has no client - this should never happen`);
       throw new Error("Client should always exist on templates");
     }
 
+    this.initialized = true;
+    log.info(`Successfully initialized Template: ${this.label}`);
     return Promise.resolve();
   }
 
   static async create(...args: any): Promise<Template> {
     const folder: TemplateFolder = args[0];
     const label: string = args[1];
+    
+    log.info(`Creating new Template "${label}" in folder "${folder.label}" (${folder.orgId})`);
+    try {
+      const input = {
+        name: label,
+        orgId: folder.orgId,
+      };
+      const response = await folder.client.sdk.createTemplateMinimal(input);
 
+      if (!response.template) {
+        const message = `Failed to generate template`;
+        log.error(message);
+        throw new Error("message");
+      }
+
+      const template = response.template;
+      log.info(`Created template via API: ${template.name} (${template.id})`);
+
+      const templateInput: EntryInput = {
+        client: folder.client,
+        id: template.id,
+        label: template.name,
+        parent: folder,
+      };
+
+      const newTemplate = new Template(templateInput);
+      log.info(`Successfully created Template: ${template.name}`);
+      return newTemplate;
+    } catch (error) {
+      log.error(`Failed to create Template "${label}": ${error}`);
+      throw error;
+    }
+  }
+}
+
+export async function createTemplate(
+  folder: TemplateFolder,
+  label: string
+): Promise<Template> {
+  log.info(`Creating Template "${label}" in folder "${folder.label}" (${folder.orgId})`);
+  try {
     const input = {
       name: label,
       orgId: folder.orgId,
@@ -93,10 +151,12 @@ export class Template extends Entry {
 
     if (!response.template) {
       const message = `Failed to generate template`;
+      log.error(message);
       throw new Error("message");
     }
 
     const template = response.template;
+    log.info(`Template created via API: ${template.name} (${template.id})`);
 
     const templateInput: EntryInput = {
       client: folder.client,
@@ -105,33 +165,11 @@ export class Template extends Entry {
       parent: folder,
     };
 
-    return new Template(templateInput);
+    const newTemplate = new Template(templateInput);
+    log.info(`Successfully created Template: ${template.name}`);
+    return newTemplate;
+  } catch (error) {
+    log.error(`Failed to create Template "${label}": ${error}`);
+    throw error;
   }
-}
-
-export async function createTemplate(
-  folder: TemplateFolder,
-  label: string
-): Promise<Template> {
-  const input = {
-    name: label,
-    orgId: folder.orgId,
-  };
-  const response = await folder.client.sdk.createTemplateMinimal(input);
-
-  if (!response.template) {
-    const message = `Failed to generate template`;
-    throw new Error("message");
-  }
-
-  const template = response.template;
-
-  const templateInput: EntryInput = {
-    client: folder.client,
-    id: template.id,
-    label: template.name,
-    parent: folder,
-  };
-
-  return new Template(templateInput);
 }

@@ -39,6 +39,7 @@ export class AlmostOrg extends vscode.TreeItem {
 
 export class Org extends Entry {
   constructor(input: EntryInput) {
+    log.info(`Creating Org: ${input.label} (orgId: ${input.client?.orgId})`);
     super(input, {
       hasTemplates: false,
       hasTemplateFolders: false,
@@ -59,42 +60,62 @@ export class Org extends Entry {
     throw new Error("Method not implemented.");
   }
   async serialize(): Promise<string> {
-    // Get all folders in the org tree using the instance method
-    const folderMap = await this.getAllEntriesOfType(RType.TemplateFolder, TemplateFolder);
-    
-    // Serialize each folder
-    const folderStructure: SerializableTemplateFolder[] = [];
-    for (const folder of folderMap.values()) {
-      const serializedFolder = await folder.serialize();
-      folderStructure.push(JSON.parse(serializedFolder));
+    log.info(`Serializing Org: ${this.label} (${this.orgId})`);
+    try {
+      // Get all folders in the org tree using the instance method
+      const folderMap = await this.getAllEntriesOfType(RType.TemplateFolder, TemplateFolder);
+      log.info(`Found ${folderMap.size} template folders to serialize for org ${this.orgId}`);
+      
+      // Serialize each folder
+      const folderStructure: SerializableTemplateFolder[] = [];
+      for (const folder of folderMap.values()) {
+        const serializedFolder = await folder.serialize();
+        folderStructure.push(JSON.parse(serializedFolder));
+      }
+
+      const serializable: SerializableOrg = {
+        orgId: this.orgId,
+        orgLabel: this.label,
+        lastSync: Date.now(),
+        folderStructure
+      };
+
+      const result = JSON.stringify(serializable);
+      log.info(`Successfully serialized Org: ${this.label} with ${folderStructure.length} folders`);
+      return result;
+    } catch (error) {
+      log.error(`Failed to serialize Org ${this.label} (${this.orgId}): ${error}`);
+      throw error;
     }
-
-    const serializable: SerializableOrg = {
-      orgId: this.orgId,
-      orgLabel: this.label,
-      lastSync: Date.now(),
-      folderStructure
-    };
-
-    return JSON.stringify(serializable);
   }
   setLabel(label: string): void {
     throw new Error("Method not implemented.");
   }
   async initialize(): Promise<void> {
     if (this.initialized) {
+      log.info(`Org ${this.orgId} already initialized`);
       return;
     }
-    //something something create template folder and have it protected.
+    
+    log.info(`Initializing Org: ${this.orgId}`);
+    try {
+      //something something create template folder and have it protected.
 
-    const response = await this.client.sdk.UserOrganization();
-    if (response.userOrganization === undefined) {
-      throw new Error("could not get org info");
+      log.info(`Fetching organization info for ${this.orgId}`);
+      const response = await this.client.sdk.UserOrganization();
+      if (response.userOrganization === undefined) {
+        log.error(`Failed to get org info for ${this.orgId}: API returned undefined`);
+        throw new Error("could not get org info");
+      }
+      const org = response.userOrganization;
+      this.label = org?.name ?? "";
+      
+      log.info(`Successfully initialized Org: "${this.label}" (${this.orgId})`);
+      this.initialized = true;
+    } catch (error) {
+      log.error(`Failed to initialize Org ${this.orgId}: ${error}`);
+      throw error;
     }
-    const org = response.userOrganization;
-    this.label = org?.name ?? "";
-
-    this.initialized = true;
   }
 
 
@@ -104,15 +125,24 @@ export class Org extends Entry {
   }
 
   static async create(cmdContext: CommandContext, ...args: any): Promise<Org> {
-    const client = await RewstClient.create(cmdContext.context);
+    log.info(`Creating new Org via static create method`);
+    try {
+      const client = await RewstClient.create(cmdContext.context);
+      log.info(`Created RewstClient for org: ${client.orgId}`);
 
-    const orgInput: EntryInput = {
-      client: client,
-      id: client.orgId,
-      label: client.label,
-    };
+      const orgInput: EntryInput = {
+        client: client,
+        id: client.orgId,
+        label: client.label,
+      };
 
-    return new Org(orgInput);
+      const org = new Org(orgInput);
+      log.info(`Successfully created Org: "${client.label}" (${client.orgId})`);
+      return org;
+    } catch (error) {
+      log.error(`Failed to create Org: ${error}`);
+      throw error;
+    }
   }
 }
 

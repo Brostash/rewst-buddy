@@ -1,24 +1,37 @@
 import GenericCommand from "../models/GenericCommand";
 import { RewstClient } from "@client/index";
 import { Entry, Org } from "@fs/models";
+import { log } from "@log";
 
 
 export class LoadClients extends GenericCommand {
   commandName = "LoadClients";
 
   async execute(): Promise<unknown> {
-    const view = this.cmdContext.view;
+    log.info('LoadClients command started');
+    try {
+      const view = this.cmdContext.view;
 
-    const clients = await RewstClient.LoadClients(this.context);
+      log.info('Loading clients from storage');
+      const clients = await RewstClient.LoadClients(this.context);
+      log.info(`Found ${clients.length} clients to load`);
 
-    for (const client of clients) {
-      const org = await Org.create(this.cmdContext, client.orgId);
+      for (const client of clients) {
+        log.info(`Creating org for client: ${client.orgId}`);
+        const org = await Org.create(this.cmdContext, client.orgId);
 
-      view.rewstfs.tree.newOrg(org);
+        view.rewstfs.tree.newOrg(org);
+        log.info(`Successfully loaded org: ${org.label} (${org.orgId})`);
+      }
+
+      log.info('Refreshing view after loading clients');
+      this.cmdContext.view.refresh();
+      
+      log.info(`LoadClients command completed successfully - loaded ${clients.length} clients`);
+      return;
+    } catch (error) {
+      log.error(`LoadClients command failed: ${error}`);
+      throw error;
     }
-
-    this.cmdContext.view.refresh();
-
-    return;
   }
 }
