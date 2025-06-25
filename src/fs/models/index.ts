@@ -2,7 +2,7 @@ import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import { Template, createTemplate } from "./Template";
 import { TemplateFolder, createTemplateFolder } from "./TemplateFolder";
 import { Org, AlmostOrg } from "./Org";
-import { Tree, getOrgId, getParentUri, getUriParts } from "./Tree";
+import { Tree, getParentUri, getUriParts } from "./Tree";
 
 export {
   ContextValueParams,
@@ -16,7 +16,6 @@ export {
   Org,
   AlmostOrg,
   Tree,
-  getOrgId,
   getParentUri,
   getUriParts,
 };

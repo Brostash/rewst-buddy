@@ -92,10 +92,10 @@ export abstract class Entry implements IEntry {
   checkboxState?:
     | vscode.TreeItemCheckboxState
     | {
-        readonly state: vscode.TreeItemCheckboxState;
-        readonly tooltip?: string;
-        readonly accessibilityInformation?: vscode.AccessibilityInformation;
-      }
+      readonly state: vscode.TreeItemCheckboxState;
+      readonly tooltip?: string;
+      readonly accessibilityInformation?: vscode.AccessibilityInformation;
+    }
     | undefined;
 
   constructor(input: EntryInput, contextValueParams: ContextValueParams) {
@@ -105,7 +105,7 @@ export abstract class Entry implements IEntry {
     }
 
     log.info(`Creating Entry: ${input.label} (id: ${input.id || 'new'}, type: ${this.constructor.name})`);
-    
+
     this.label = input.label;
     this.client = input.client;
     this.orgId = this.client?.orgId ?? "";
@@ -168,9 +168,15 @@ export abstract class Entry implements IEntry {
     const newPath = path.posix.join(
       "/",
       parentUri.path,
-      this.ext ? `${this.id}.${this.ext}` : this.id
+      this.ext ? `${this.label}.${this.ext}` : this.label
     );
     return parentUri.with({ path: newPath });
+  }
+
+  private validateLabel(label: string): void {
+    if (!/^[a-zA-Z0-9[\]\-_ ]+$/.test(label)) {
+      throw new Error(`Invalid label: "${label}". Only alphanumerics, spaces, -, _, [ ] allowed`);
+    }
   }
 
   getLabel(): string {

@@ -24,10 +24,6 @@ export function getParentUri(uri: vscode.Uri): vscode.Uri {
   return parentUri;
 }
 
-export function getOrgId(uri: vscode.Uri): string {
-  return uri.authority;
-}
-
 export class Tree implements ITree<Entry> {
   orgs = new Map<string, Entry>();
   almostOrgs = new Map<string, AlmostOrg>();
@@ -41,8 +37,32 @@ export class Tree implements ITree<Entry> {
     log.info(`Tree initialized with ${this.almostOrgs.size} AlmostOrgs`);
   }
 
+  getOrgId(uri: vscode.Uri): string {
+    const orgLabel = uri.authority;
+    log.info(`Looking up orgId for URI authority (org label): ${orgLabel}`);
+
+    // First check in the orgs map - find by label
+    for (const [orgId, org] of this.orgs.entries()) {
+      if (org.label === orgLabel) {
+        log.info(`Found org in orgs map: ${org.label} -> ${orgId}`);
+        return orgId;
+      }
+    }
+
+    // Then check in almostOrgs map - find by label
+    for (const [orgId, almostOrg] of this.almostOrgs.entries()) {
+      if (almostOrg.label === orgLabel) {
+        log.info(`Found org in almostOrgs map: ${almostOrg.label} -> ${orgId}`);
+        return orgId;
+      }
+    }
+
+    log.error(`Org not found for label: ${orgLabel}`);
+    throw vscode.FileSystemError.FileNotFound(uri);
+  }
+
   lookupEntry(uri: vscode.Uri): Entry {
-    const orgId = getOrgId(uri);
+    const orgId = this.getOrgId(uri);
     log.info(`Looking up entry for URI: ${uri.toString()}, orgId: ${orgId}`);
     const org = this.orgs.get(orgId);
 
@@ -55,12 +75,22 @@ export class Tree implements ITree<Entry> {
     log.info(`Traversing ${parts.length} URI parts to find entry`);
     let cur: Entry = org;
     for (const part of parts) {
-      let match = cur.children.filter((c) => c.id === part);
+      // Handle file extensions - remove extension to get the base label
+      const basePart = part.includes('.')
+        ? part.substring(0, part.lastIndexOf('.'))
+        : part;
+
+      // First try to match by label (with or without extension)
+      let match = cur.children.filter((c) => c.label === basePart || c.label === part);
+
+      // If no match found, try exact URI comparison as fallback
       if (match.length !== 1) {
         match = cur.children.filter((c) => c.getUri().toString() === uri.toString());
       }
+
       if (match.length !== 1) {
-        log.error(`Entry not found at URI part: ${part}, in parent: ${cur.label}`);
+        log.error(`Entry not found at URI part: ${part} (base: ${basePart}), in parent: ${cur.label}`);
+        log.error(`Available children: ${cur.children.map(c => c.label).join(', ')}`);
         throw vscode.FileSystemError.FileNotFound(uri);
       }
       cur = match[0];
@@ -96,7 +126,7 @@ export class Tree implements ITree<Entry> {
 
   removeEntry(uri: vscode.Uri): void {
     try {
-      const orgId = getOrgId(uri);
+      const orgId = this.getOrgId(uri);
       const parts = getUriParts(uri);
 
       log.info(`Attempting to remove entry at URI: ${uri.toString()}`);

@@ -144,7 +144,7 @@ export class Org extends Entry {
 
 
   getUri(): vscode.Uri {
-    return RewstFS.uriOf(`${this.orgId}`);
+    return RewstFS.uriOf(`${this.label}`);
   }
 
   static async create(cmdContext: CommandContext, ...args: any): Promise<Org> {
