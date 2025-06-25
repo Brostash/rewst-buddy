@@ -13,8 +13,7 @@ interface ITree<T extends Entry> {
 }
 
 export function getUriParts(uri: vscode.Uri): string[] {
-  const noScheme = uri.toString().replace(RewstFS.schema, "");
-  const parts = noScheme.split("/");
+  const [_, ...parts] = uri.path.split('/');
   return parts;
 }
 
@@ -56,7 +55,10 @@ export class Tree implements ITree<Entry> {
     log.info(`Traversing ${parts.length} URI parts to find entry`);
     let cur: Entry = org;
     for (const part of parts) {
-      const match = cur.children.filter((c) => c.id === part);
+      let match = cur.children.filter((c) => c.id === part);
+      if (match.length !== 1) {
+        match = cur.children.filter((c) => c.getUri().toString() === uri.toString());
+      }
       if (match.length !== 1) {
         log.error(`Entry not found at URI part: ${part}, in parent: ${cur.label}`);
         throw vscode.FileSystemError.FileNotFound(uri);
