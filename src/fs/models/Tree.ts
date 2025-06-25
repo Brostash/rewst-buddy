@@ -13,7 +13,8 @@ interface ITree<T extends Entry> {
 }
 
 export function getUriParts(uri: vscode.Uri): string[] {
-  const [_, ...parts] = uri.path.split('/');
+  const parts = uri.path.split('/').filter(part => part !== '');;
+  // Filter out empty parts caused by trailing slashes
   return parts;
 }
 
@@ -43,7 +44,7 @@ export class Tree implements ITree<Entry> {
 
     // First check in the orgs map - find by label
     for (const [orgId, org] of this.orgs.entries()) {
-      if (org.label === orgLabel) {
+      if (org.label.toLowerCase() === orgLabel.toLowerCase()) {
         log.info(`Found org in orgs map: ${org.label} -> ${orgId}`);
         return orgId;
       }
@@ -51,7 +52,7 @@ export class Tree implements ITree<Entry> {
 
     // Then check in almostOrgs map - find by label
     for (const [orgId, almostOrg] of this.almostOrgs.entries()) {
-      if (almostOrg.label === orgLabel) {
+      if (almostOrg.label?.toString().toLowerCase() === orgLabel) {
         log.info(`Found org in almostOrgs map: ${almostOrg.label} -> ${orgId}`);
         return orgId;
       }
