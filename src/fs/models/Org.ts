@@ -50,8 +50,9 @@ export class Org extends Entry {
   }
 
   rtype = RType.Org;
-  getCommand(): vscode.Command {
-    throw new Error("Method not implemented.");
+  getCommand(): undefined {
+
+    return undefined;
   }
   readData(): Promise<string> {
     throw new Error("Method not implemented.");
@@ -65,7 +66,7 @@ export class Org extends Entry {
       // Get all folders in the org tree using the instance method
       const folderMap = await this.getAllEntriesOfType(RType.TemplateFolder, TemplateFolder);
       log.info(`Found ${folderMap.size} template folders to serialize for org ${this.orgId}`);
-      
+
       // Serialize each folder
       const folderStructure: SerializableTemplateFolder[] = [];
       for (const folder of folderMap.values()) {
@@ -96,22 +97,44 @@ export class Org extends Entry {
       log.info(`Org ${this.orgId} already initialized`);
       return;
     }
-    
+
     log.info(`Initializing Org: ${this.orgId}`);
     try {
       //something something create template folder and have it protected.
 
-      log.info(`Fetching organization info for ${this.orgId}`);
-      const response = await this.client.sdk.UserOrganization();
-      if (response.userOrganization === undefined) {
-        log.error(`Failed to get org info for ${this.orgId}: API returned undefined`);
-        throw new Error("could not get org info");
+      try {
+        // Load organization data from API
+        log.info(`Fetching organization info for ${this.orgId}`);
+        const response = await this.client.sdk.UserOrganization();
+        if (response.userOrganization === undefined) {
+          log.error(`Failed to get org info for ${this.orgId}: API returned undefined`);
+          throw new Error("could not get org info");
+        }
+        const org = response.userOrganization;
+        this.label = org?.name ?? "";
+
+        // Create the designated root template folder for this organization
+        // This is the centralized repository for all templates and subdirectories
+        const templateFolderInput: EntryInput = {
+          client: this.client,
+          // No id provided - will auto-generate UUIDv7 for unique identification
+          // TODO: Handle ID persistence from storage/cache for tree reconstruction
+          label: "Templates", // Standard name for the root template folder
+          parent: this,
+        };
+
+        const rootTemplateFolder = new TemplateFolder(templateFolderInput);
+
+        // The template folder will be added as a child via the parent constructor
+        // No need to manually call addChild as it's handled in the EntryInput.parent logic
+
+        log.info(`Initialized org '${this.label}' with root template folder (ID: ${rootTemplateFolder.id})`);
+        log.info(`Successfully initialized Org: "${this.label}" (${this.orgId})`);
+        this.initialized = true;
+      } catch (error) {
+        log.error(`Failed to initialize org '${this.id}': ${error}`, false, true);
+        throw error;
       }
-      const org = response.userOrganization;
-      this.label = org?.name ?? "";
-      
-      log.info(`Successfully initialized Org: "${this.label}" (${this.orgId})`);
-      this.initialized = true;
     } catch (error) {
       log.error(`Failed to initialize Org ${this.orgId}: ${error}`);
       throw error;

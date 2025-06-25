@@ -12,11 +12,8 @@ export interface SerializableTemplateFolder {
 }
 
 export class TemplateFolder extends Entry {
-  getCommand(): vscode.Command {
-    return {
-      title: "",
-      command: "",
-    };
+  getCommand(): undefined {
+    return undefined;
   }
   rtype: RType = RType.TemplateFolder;
 
@@ -79,7 +76,7 @@ export class TemplateFolder extends Entry {
         //load in all the templates
         log.info(`Loading templates for org ${this.id}`);
         const response = await this.client.sdk.listTemplatesMinimal({
-          orgId: this.id,
+          orgId: this.orgId,
         });
         const templates = response.templates;
         log.info(`Found ${templates.length} templates for org ${this.id}`);
@@ -123,7 +120,7 @@ export class TemplateFolder extends Entry {
       score += b instanceof TemplateFolder ? 100 : 0;
       return score;
     });
-    
+
     log.info(`Returning ${sortedChildren.length} children for TemplateFolder: ${this.label}`);
     return sortedChildren;
   }

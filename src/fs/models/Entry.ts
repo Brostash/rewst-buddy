@@ -54,7 +54,7 @@ interface IEntry extends EntryInput, vscode.TreeItem, vscode.FileStat {
 
   serialize(): Promise<string>;
 
-  getCommand(): vscode.Command | Promise<vscode.Command>;
+  getCommand(): vscode.Command | undefined | Promise<vscode.Command | undefined>;
   getTreeItem(): Promise<vscode.TreeItem>;
 
   readData(): string | Promise<string>;
@@ -143,7 +143,7 @@ export abstract class Entry implements IEntry {
 
   abstract initialize(): Promise<void>;
 
-  abstract getCommand(): vscode.Command;
+  abstract getCommand(): vscode.Command | undefined | Promise<vscode.Command | undefined>;
 
   abstract serialize(): Promise<string>;
 
