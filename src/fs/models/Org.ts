@@ -38,6 +38,8 @@ export class AlmostOrg extends vscode.TreeItem {
 }
 
 export class Org extends Entry {
+  type = vscode.FileType.Directory;
+
   constructor(input: EntryInput) {
     log.info(`Creating Org: ${input.label} (orgId: ${input.client?.orgId})`);
     super(input, {
@@ -46,6 +48,7 @@ export class Org extends Entry {
       isRenamable: false,
       isTemplateFolder: false,
       isTemplate: false,
+      isOrg: true,
     });
   }
 

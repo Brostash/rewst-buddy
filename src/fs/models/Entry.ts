@@ -20,6 +20,7 @@ export interface ContextValueParams {
   hasTemplateFolders: boolean;
   isRenamable: boolean;
   isTemplateFolder: boolean;
+  isOrg?: boolean;
 }
 
 export interface EntryInput {
@@ -227,6 +228,7 @@ export abstract class Entry implements IEntry {
       params.isTemplateFolder ? "is-TemplateFolder" : "",
       params.isRenamable ? "renamable" : "",
       params.isTemplate ? "is-template" : "",
+      params.isOrg ? "is-org" : "",
     ].filter(Boolean);
 
     return classes.join(" ");

@@ -36,4 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() { }
+export function deactivate() {
+  // Filesystem provider is automatically disposed via RewstView's context.subscriptions
+  log.info('Deactivating rewst-buddy extension');
+}

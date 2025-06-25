@@ -19,13 +19,22 @@ export default class RewstFS implements vscode.FileSystemProvider {
   constructor() {
     this.tree = new Tree();
   }
-  readDirectory(
+  async readDirectory(
     uri: vscode.Uri
-  ): [string, vscode.FileType][] | Thenable<[string, vscode.FileType][]> {
-    throw new Error("Method not implemented.");
+  ): Promise<[string, vscode.FileType][]> {
+    const entry = this.tree.lookupEntry(uri);
+    const result: [string, vscode.FileType][] = [];
+
+    for (const child of await entry.getChildren()) {
+      result.push([child.getLabel(), child.type]);
+    }
+    return result;
   }
+
   createDirectory(uri: vscode.Uri): void | Thenable<void> {
-    throw new Error("Method not implemented.");
+    // Virtual filesystem - directories are created automatically via tree structure
+    // No need to implement actual directory creation
+    return Promise.resolve();
   }
 
   //#region fs ops
@@ -33,17 +42,6 @@ export default class RewstFS implements vscode.FileSystemProvider {
     return this.tree.lookupEntry(uri);
   }
 
-  async readTemplateFolder(
-    uri: vscode.Uri
-  ): Promise<[string, vscode.FileType][]> {
-    const dir = this.tree.lookupEntry(uri);
-    const result: [string, vscode.FileType][] = [];
-
-    for (const child of await dir.getChildren()) {
-      result.push([child.getLabel(), child.type]);
-    }
-    return result;
-  }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
     const entry = this.tree.lookupEntry(uri);
@@ -63,21 +61,30 @@ export default class RewstFS implements vscode.FileSystemProvider {
     uri: vscode.Uri,
     options: { readonly recursive: boolean }
   ): void | Promise<void> {
-    throw new Error("Method not implemented.");
+    try {
+      this.tree.removeEntry(uri);
+      this._fireSoon({ type: vscode.FileChangeType.Deleted, uri });
+    } catch (error) {
+      throw vscode.FileSystemError.FileNotFound(uri);
+    }
   }
+
   rename(
     oldUri: vscode.Uri,
     newUri: vscode.Uri,
     options: { readonly overwrite: boolean }
   ): void | Promise<void> {
-    throw new Error("Method not implemented.");
+    // For now, just throw FileSystemError instead of generic Error to avoid crashes
+    throw vscode.FileSystemError.Unavailable("Rename operation not supported");
   }
+
   copy?(
     source: vscode.Uri,
     destination: vscode.Uri,
     options: { readonly overwrite: boolean }
   ): void | Promise<void> {
-    throw new Error("Method not implemented.");
+    // For now, just throw FileSystemError instead of generic Error to avoid crashes
+    throw vscode.FileSystemError.Unavailable("Copy operation not supported");
   }
 
   move(source: vscode.Uri, destination: vscode.Uri): void {

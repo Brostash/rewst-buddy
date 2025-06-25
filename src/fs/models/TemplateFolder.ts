@@ -12,6 +12,8 @@ export interface SerializableTemplateFolder {
 }
 
 export class TemplateFolder extends Entry {
+  type = vscode.FileType.Directory;
+
   getCommand(): undefined {
     return undefined;
   }

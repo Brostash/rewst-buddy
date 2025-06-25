@@ -115,6 +115,12 @@
       {
         "command": "rewst-buddy.ChangeTemplateFiletypeCustom",
         "title": "Custom"
+      },
+      {
+        "command": "rewst-buddy.OpenOrgInFolder",
+        "title": "Add Org to Workspace",
+        "category": "Rewst",
+        "icon": "$(folder-opened)"
       }
     ],
     "views": {
@@ -190,6 +196,11 @@
           "command": "rewst-buddy.DeleteTemplate",
           "when": "viewItem =~ /is-template/",
           "group": "fileops@100"
+        },
+        {
+          "command": "rewst-buddy.OpenOrgInFolder",
+          "when": "viewItem =~ /is-org/",
+          "group": "navigation@10"
         }
       ]
     }

@@ -13,7 +13,7 @@ export default class RewstView
       vscode.workspace.registerFileSystemProvider(
         RewstFS.scheme,
         this.rewstfs,
-        { isCaseSensitive: true }
+        { isCaseSensitive: false }
       )
     );
     vscode.window.createTreeView("RewstView", {
