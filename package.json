@@ -133,6 +133,18 @@
         "title": "Toggle Cloud Sync",
         "category": "Rewst",
         "icon": "$(cloud)"
+      },
+      {
+        "command": "rewst-buddy.RefreshStructureFromCloud",
+        "title": "Refresh from Cloud",
+        "category": "Rewst",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "rewst-buddy.CheckForCloudUpdates",
+        "title": "Check for Cloud Updates",
+        "category": "Rewst",
+        "icon": "$(sync)"
       }
     ],
     "views": {
@@ -227,6 +239,16 @@
           "command": "rewst-buddy.ToggleCloudSync",
           "when": "viewItem =~ /is-org/",
           "group": "storage@30"
+        },
+        {
+          "command": "rewst-buddy.RefreshStructureFromCloud",
+          "when": "viewItem =~ /is-org/",
+          "group": "storage@40"
+        },
+        {
+          "command": "rewst-buddy.CheckForCloudUpdates",
+          "when": "viewItem =~ /is-org/",
+          "group": "storage@50"
         }
       ]
     }

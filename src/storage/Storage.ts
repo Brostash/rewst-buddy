@@ -173,6 +173,51 @@ class Storage {
     }
   }
 
+  /**
+   * Check if cloud structure has been updated (for background monitoring)
+   */
+  async checkForCloudUpdates(client: RewstClient): Promise<{ hasUpdates: boolean; currentVersion?: number; author?: string }> {
+    try {
+      if (!this.isCloudSyncEnabled(client)) {
+        return { hasUpdates: false };
+      }
+
+      const cloudStructureJson = await this.getOrgVariable(client, "rewst-buddy-folder-structure");
+      if (!cloudStructureJson) {
+        return { hasUpdates: false };
+      }
+
+      const cloudStructure = JSON.parse(cloudStructureJson);
+      const currentVersion = cloudStructure.version || 0;
+      const lastKnownVersion = this.getLastKnownCloudVersion(client);
+
+      return {
+        hasUpdates: currentVersion > lastKnownVersion,
+        currentVersion,
+        author: cloudStructure.author
+      };
+    } catch (error) {
+      log.error(`Failed to check for cloud updates: ${error}`);
+      return { hasUpdates: false };
+    }
+  }
+
+  /**
+   * Get current cloud folder structure
+   */
+  async getCurrentCloudStructure(client: RewstClient): Promise<any | null> {
+    try {
+      const cloudStructureJson = await this.getOrgVariable(client, "rewst-buddy-folder-structure");
+      if (!cloudStructureJson) {
+        return null;
+      }
+      return JSON.parse(cloudStructureJson);
+    } catch (error) {
+      log.error(`Failed to get current cloud structure: ${error}`);
+      return null;
+    }
+  }
+
   // Additional utility methods for storage management
   clearOrgData(orgId: string): void {
     this.ensureInitialized();

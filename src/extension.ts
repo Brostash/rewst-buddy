@@ -8,6 +8,7 @@ import CommandInitiater from "@commands/models/CommandInitiater";
 import { RewstClient } from "@client/index";
 import { storage } from "storage/Storage";
 import { log } from "@log";
+import { getBackgroundSyncService } from "services/BackgroundSyncService";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -33,6 +34,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
   CommandInitiater.registerCommands(ctx);
+
+  // Initialize background sync service
+  const backgroundSync = getBackgroundSyncService(context);
+  backgroundSync.start();
+  context.subscriptions.push({
+    dispose: () => backgroundSync.dispose()
+  });
 
   vscode.commands.executeCommand('rewst-buddy.LoadClients');
 
