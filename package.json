@@ -121,6 +121,12 @@
         "title": "Add Org to Workspace",
         "category": "Rewst",
         "icon": "$(folder-opened)"
+      },
+      {
+        "command": "rewst-buddy.ClearFolderStructure",
+        "title": "Clear Folder Structure",
+        "category": "Rewst",
+        "icon": "$(trash)"
       }
     ],
     "views": {
@@ -161,6 +167,10 @@
         {
           "command": "rewst-buddy.NewClient",
           "group": "navigation"
+        },
+        {
+          "command": "rewst-buddy.ClearFolderStructure",
+          "group": "storage"
         }
       ],
       "view/item/context": [
