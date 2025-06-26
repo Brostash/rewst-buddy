@@ -5,6 +5,7 @@ import {
 } from "graphql_sdk";
 import RewstClient from "client/RewstClient";
 import vscode from "vscode";
+import { log } from "@log";
 
 class Storage {
   private context!: vscode.ExtensionContext;
@@ -104,6 +105,72 @@ class Storage {
     this.ensureInitialized();
     const key = `cloudSyncEnabled-${client.orgId}`;
     this.context.globalState.update(key, enabled);
+  }
+
+  /**
+   * Store last known cloud version for conflict detection
+   */
+  setLastKnownCloudVersion(client: RewstClient, version: number): void {
+    this.ensureInitialized();
+    const key = `lastKnownCloudVersion-${client.orgId}`;
+    this.context.globalState.update(key, version);
+  }
+
+  /**
+   * Get last known cloud version for conflict detection
+   */
+  getLastKnownCloudVersion(client: RewstClient): number {
+    this.ensureInitialized();
+    const key = `lastKnownCloudVersion-${client.orgId}`;
+    return this.context.globalState.get(key, 0);
+  }
+
+  /**
+   * Save folder structure with conflict detection
+   */
+  async saveFolderStructureWithConflictCheck(
+    client: RewstClient,
+    folderStructure: any,
+    expectedVersion: number,
+    author: string
+  ): Promise<{ success: boolean; conflict?: boolean; currentVersion?: number }> {
+    try {
+      // Check current cloud version
+      const currentCloudStructureJson = await this.getOrgVariable(client, "rewst-buddy-folder-structure");
+      let currentVersion = 0;
+
+      if (currentCloudStructureJson) {
+        try {
+          const currentCloudStructure = JSON.parse(currentCloudStructureJson);
+          currentVersion = currentCloudStructure.version || 0;
+        } catch (error) {
+          log.error(`Failed to parse current cloud structure for version check: ${error}`);
+        }
+      }
+
+      // Check for conflicts
+      if (currentVersion > expectedVersion) {
+        return { success: false, conflict: true, currentVersion };
+      }
+
+      // No conflict - create versioned structure and save
+      const versionedStructure = {
+        ...folderStructure,
+        version: currentVersion + 1,
+        author,
+        lastUpdated: new Date().toISOString()
+      };
+
+      await this.upsertOrgVariable(client, "rewst-buddy-folder-structure", JSON.stringify(versionedStructure));
+
+      // Update our stored version
+      this.setLastKnownCloudVersion(client, versionedStructure.version);
+
+      return { success: true };
+    } catch (error) {
+      log.error(`Failed to save folder structure with conflict check: ${error}`);
+      throw error;
+    }
   }
 
   // Additional utility methods for storage management

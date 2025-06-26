@@ -61,9 +61,48 @@ export class SaveFolderStructure extends GenericCommand {
         try {
           const cloudSyncEnabled = storage.isCloudSyncEnabled(entry.client);
           if (cloudSyncEnabled) {
-            await storage.upsertOrgVariable(entry.client, "rewst-buddy-folder-structure", JSON.stringify(templateFolderStructure));
-            log.info(`Saved folder structure to cloud for org "${org.label}" (${org.id})`);
-            vscode.window.showInformationMessage(`Folder structure saved locally and to cloud for ${org.label}`);
+            // Get last known version for conflict detection
+            const lastKnownVersion = storage.getLastKnownCloudVersion(entry.client);
+            const author = "VS Code User"; // TODO: Get actual user info if available
+
+            // Attempt to save with conflict detection
+            const saveResult = await storage.saveFolderStructureWithConflictCheck(
+              entry.client,
+              templateFolderStructure,
+              lastKnownVersion,
+              author
+            );
+
+            if (saveResult.success) {
+              log.info(`Saved folder structure to cloud for org "${org.label}" (${org.id})`);
+              vscode.window.showInformationMessage(`Folder structure saved locally and to cloud for ${org.label}`);
+            } else if (saveResult.conflict) {
+              // Handle conflict - show resolution dialog
+              const action = await vscode.window.showWarningMessage(
+                `Folder structure for "${org.label}" was modified by someone else. Choose which version to keep:`,
+                'Use My Changes',
+                'Use Cloud Changes',
+                'Cancel'
+              );
+
+              if (action === 'Use My Changes') {
+                // Force save with current version
+                const forceResult = await storage.saveFolderStructureWithConflictCheck(
+                  entry.client,
+                  templateFolderStructure,
+                  saveResult.currentVersion || 0,
+                  author
+                );
+                if (forceResult.success) {
+                  vscode.window.showInformationMessage(`Folder structure forcibly saved to cloud for ${org.label}`);
+                }
+              } else if (action === 'Use Cloud Changes') {
+                vscode.window.showInformationMessage(
+                  `Local changes discarded. Please refresh to see cloud changes for ${org.label}`
+                );
+              }
+              // If Cancel, do nothing
+            }
           } else {
             log.info(`Cloud sync disabled for org "${org.label}" (${org.id}) - only saved locally`);
             vscode.window.showInformationMessage(`Folder structure saved locally for ${org.label}`);

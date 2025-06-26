@@ -19,12 +19,17 @@ export interface TemplatePlacement {
   templateExt?: string;
 }
 
+export interface CloudFolderStructure {
+  folders: SerializableTemplateFolder[];
+  templatePlacements: TemplatePlacement[];
+  lastUpdated: string;
+  version: number;           // Incremental version counter
+  author: string;           // Who made the change (user email/name)
+  changeDescription?: string; // Optional description of changes
+}
+
 export interface StoredOrgStructure {
-  templateFolderStructure?: {
-    folders: SerializableTemplateFolder[];
-    templatePlacements: TemplatePlacement[];
-    lastUpdated: string;
-  };
+  templateFolderStructure?: CloudFolderStructure;
 }
 
 export class TemplateFolder extends Entry {
@@ -101,6 +106,16 @@ export class TemplateFolder extends Entry {
             if (cloudStructureJson) {
               folderStructureData = JSON.parse(cloudStructureJson);
               log.info(`Loaded folder structure from cloud for org ${this.parent.id}`);
+
+              // Handle version tracking for conflict detection
+              if (folderStructureData.version) {
+                storage.setLastKnownCloudVersion(this.client, folderStructureData.version);
+                log.info(`Stored cloud version ${folderStructureData.version} for conflict detection`);
+              } else {
+                // Backward compatibility: treat non-versioned data as version 1
+                storage.setLastKnownCloudVersion(this.client, 1);
+                log.info(`No version found in cloud data, assuming version 1 for backward compatibility`);
+              }
             } else {
               log.info(`No cloud folder structure found for org ${this.parent.id}, falling back to local`);
             }
