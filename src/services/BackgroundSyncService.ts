@@ -7,7 +7,7 @@ export class BackgroundSyncService {
     private context: vscode.ExtensionContext;
     private syncInterval?: NodeJS.Timeout;
     private clients = new Set<RewstClient>();
-    private readonly SYNC_INTERVAL_MS = 3 * 60 * 1000; // 3 minutes
+    private readonly SYNC_INTERVAL_MS = 1 * 60 * 1000; // 3 minutes
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;

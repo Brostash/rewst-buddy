@@ -2,7 +2,7 @@ import GenericCommand from "../models/GenericCommand";
 import vscode from "vscode";
 import { log } from "@log";
 import { storage } from "storage/Storage";
-import { Org } from "@fs/models";
+import { Org, Entry } from "@fs/models";
 import RewstClient from "client/RewstClient";
 
 export class RefreshStructureFromCloud extends GenericCommand {
@@ -10,28 +10,18 @@ export class RefreshStructureFromCloud extends GenericCommand {
 
     async execute(...args: any): Promise<unknown> {
         log.info('RefreshStructureFromCloud command started');
+
         try {
-            // Handle both direct client calls and tree view calls
-            let client: RewstClient;
-            let orgId: string;
+            // Both call paths pass a RewstClient as the first argument
+            const client = args[0][0] as RewstClient;
 
-            if (args.length > 0 && args[0] instanceof RewstClient) {
-                // Called directly with client (from background service)
-                client = args[0];
-                orgId = client.orgId;
-            } else {
-                // Called from tree view
-                const entry = args[0][0] ?? undefined;
-                if (!entry) {
-                    vscode.window.showErrorMessage("No organization selected");
-                    return false;
-                }
-
-                // Get org from the entry's URI using tree lookup
-                const org: Org = this.cmdContext.fs.tree.lookupOrg(entry.getUri());
-                client = entry.client;
-                orgId = org.id;
+            if (!client || !client.orgId) {
+                vscode.window.showErrorMessage("Invalid client provided");
+                return false;
             }
+
+            const orgId = client.orgId;
+            log.info(`Processing refresh for org ${orgId}`);
 
             // Check if cloud sync is enabled
             if (!storage.isCloudSyncEnabled(client)) {
