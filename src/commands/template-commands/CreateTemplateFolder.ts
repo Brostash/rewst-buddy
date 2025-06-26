@@ -49,6 +49,8 @@ export class CreateTemplateFolder extends GenericCommand {
 
       log.info('Refreshing view after folder creation');
       vscode.commands.executeCommand("rewst-buddy.RefreshView", folder);
+      vscode.commands.executeCommand("rewst-buddy.SaveFolderStructure", folder);
+
 
       log.info('CreateTemplateFolder command completed successfully');
     } catch (error) {
@@ -124,5 +126,7 @@ export class CreateTemplateFolder extends GenericCommand {
 
       inputBox.show();
     });
+
   }
+
 }
