@@ -127,6 +127,12 @@
         "title": "Clear Folder Structure",
         "category": "Rewst",
         "icon": "$(trash)"
+      },
+      {
+        "command": "rewst-buddy.ToggleCloudSync",
+        "title": "Toggle Cloud Sync",
+        "category": "Rewst",
+        "icon": "$(cloud)"
       }
     ],
     "views": {
@@ -211,6 +217,16 @@
           "command": "rewst-buddy.OpenOrgInFolder",
           "when": "viewItem =~ /is-org/",
           "group": "navigation@10"
+        },
+        {
+          "command": "rewst-buddy.SaveFolderStructure",
+          "when": "viewItem =~ /is-org/",
+          "group": "storage@20"
+        },
+        {
+          "command": "rewst-buddy.ToggleCloudSync",
+          "when": "viewItem =~ /is-org/",
+          "group": "storage@30"
         }
       ]
     }

@@ -9,3 +9,15 @@ mutation createOrgVariable($orgVariable: OrgVariableCreateInput!) {
     value
   }
 }
+
+query getOrgVariable($orgId: ID!, $name: String!) {
+  orgVariable(where : {orgId: $orgId, name: $name}) {
+    category
+    createdAt
+    id
+    name
+    orgId
+    updatedAt
+    value
+  }
+}

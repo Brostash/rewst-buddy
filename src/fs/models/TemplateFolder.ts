@@ -90,41 +90,61 @@ export class TemplateFolder extends Entry {
       if (this.parent?.rtype === RType.Org) {
         log.info(`Top-level TemplateFolder detected for org ${this.parent.id}`);
 
-        // Fetch stored folder structure from global storage
+        // Fetch stored folder structure - try cloud first if enabled, then local storage
+        let folderStructureData: any = null;
         try {
-          const storedData = storage.getRewstOrgData(this.parent.id);
-          if (storedData && storedData !== '{}') {
-            const orgData = JSON.parse(storedData);
-            if (orgData.templateFolderStructure?.folders && Array.isArray(orgData.templateFolderStructure.folders)) {
-              log.info(`Found stored folder structure with ${orgData.templateFolderStructure.folders.length} folders for org ${this.parent.id}`);
+          // Check if cloud sync is enabled
+          const cloudSyncEnabled = storage.isCloudSyncEnabled(this.client);
+          if (cloudSyncEnabled) {
+            log.info(`Cloud sync enabled for org ${this.parent.id}, checking cloud storage`);
+            const cloudStructureJson = await storage.getOrgVariable(this.client, "rewst-buddy-folder-structure");
+            if (cloudStructureJson) {
+              folderStructureData = JSON.parse(cloudStructureJson);
+              log.info(`Loaded folder structure from cloud for org ${this.parent.id}`);
+            } else {
+              log.info(`No cloud folder structure found for org ${this.parent.id}, falling back to local`);
+            }
+          }
 
-              // Find the root folder in stored data (one with parentId matching org or null)
-              const rootFolder = orgData.templateFolderStructure.folders.find((f: any) =>
-                !f.parentId || f.parentId === this.parent?.id
-              );
+          // Fall back to local storage if no cloud data
+          if (!folderStructureData) {
+            const storedData = storage.getRewstOrgData(this.parent.id);
+            if (storedData && storedData !== '{}') {
+              const orgData = JSON.parse(storedData);
+              if (orgData.templateFolderStructure?.folders && Array.isArray(orgData.templateFolderStructure.folders)) {
+                folderStructureData = orgData.templateFolderStructure;
+                log.info(`Loaded folder structure from local storage for org ${this.parent.id}`);
+              }
+            }
+          }
 
-              if (rootFolder) {
-                log.info(`Resetting root folder ID from ${this.id} to stored ID ${rootFolder.id}`);
-                const oldId = this.id;
-                this.id = rootFolder.id;
+          // Process the folder structure data if found
+          if (folderStructureData?.folders && Array.isArray(folderStructureData.folders)) {
+            log.info(`Found stored folder structure with ${folderStructureData.folders.length} folders for org ${this.parent.id}`);
 
+            // Find the root folder in stored data (one with parentId matching org or null)
+            const rootFolder = folderStructureData.folders.find((f: any) =>
+              !f.parentId || f.parentId === this.parent?.id
+            );
 
-                // Update parent's children reference if needed
-                if (this.parent) {
-                  const childIndex = this.parent.children.findIndex(child => child === this);
-                  if (childIndex !== -1) {
-                    log.info(`Updated parent's child reference for ID change from ${oldId} to ${this.id}`);
-                  }
+            if (rootFolder) {
+              log.info(`Resetting root folder ID from ${this.id} to stored ID ${rootFolder.id}`);
+              const oldId = this.id;
+              this.id = rootFolder.id;
+
+              // Update parent's children reference if needed
+              if (this.parent) {
+                const childIndex = this.parent.children.findIndex(child => child === this);
+                if (childIndex !== -1) {
+                  log.info(`Updated parent's child reference for ID change from ${oldId} to ${this.id}`);
                 }
               }
-
-              // Create missing folders recursively using the correct root ID
-              await this.createFoldersFromStoredStructure(orgData.templateFolderStructure.folders, this.id);
-            } else {
-              log.info(`No valid folder structure found in stored data for org ${this.parent.id}`);
             }
+
+            // Create missing folders recursively using the correct root ID
+            await this.createFoldersFromStoredStructure(folderStructureData.folders, this.id);
           } else {
-            log.info(`No stored data found for org ${this.parent.id}`);
+            log.info(`No valid folder structure found for org ${this.parent.id}`);
           }
         } catch (error) {
           log.error(`Failed to load stored folder structure: ${error}`);
@@ -140,17 +160,25 @@ export class TemplateFolder extends Entry {
         log.info(`Found ${allTemplates.length} total templates for org ${this.orgId}`);
 
         // Get stored template placements to determine which templates belong here
-        const storedData = storage.getRewstOrgData(this.parent.id);
         let templatePlacements: TemplatePlacement[] = [];
 
-        if (storedData && storedData !== '{}') {
-          try {
-            const orgData: StoredOrgStructure = JSON.parse(storedData);
-            templatePlacements = orgData.templateFolderStructure?.templatePlacements || [];
-            log.info(`Found ${templatePlacements.length} stored template placements`);
-          } catch (error) {
-            log.error(`Failed to parse template placements: ${error}`);
+        try {
+          // Try cloud first if enabled, reusing the same cloud data we already loaded
+          const cloudSyncEnabled = storage.isCloudSyncEnabled(this.client);
+          if (cloudSyncEnabled && folderStructureData?.templatePlacements) {
+            templatePlacements = folderStructureData.templatePlacements;
+            log.info(`Using ${templatePlacements.length} cloud template placements`);
+          } else {
+            // Fall back to local storage
+            const storedData = storage.getRewstOrgData(this.parent.id);
+            if (storedData && storedData !== '{}') {
+              const orgData: StoredOrgStructure = JSON.parse(storedData);
+              templatePlacements = orgData.templateFolderStructure?.templatePlacements || [];
+              log.info(`Found ${templatePlacements.length} local template placements`);
+            }
           }
+        } catch (error) {
+          log.error(`Failed to parse template placements: ${error}`);
         }
 
         // Filter templates: only create ones that belong in this folder OR ones not placed anywhere (for root)
@@ -242,6 +270,7 @@ export class TemplateFolder extends Entry {
       throw error;
     }
   }
+
   /**
    * Creates missing folders from stored structure recursively
    */
@@ -277,6 +306,7 @@ export class TemplateFolder extends Entry {
   readData(): Promise<string> {
     throw new Error("Method not implemented.");
   }
+
   writeData(data: string): Promise<boolean> {
     throw new Error("Method not implemented.");
   }

@@ -6884,6 +6884,14 @@ export type CreateOrgVariableMutationVariables = Exact<{
 
 export type CreateOrgVariableMutation = { __typename?: 'Mutation', createOrgVariable?: { __typename?: 'OrgVariable', category: OrgVariableCategory, createdAt: string, id: string, name: string, orgId: string, updatedAt?: string | null, value?: string | null } | null };
 
+export type GetOrgVariableQueryVariables = Exact<{
+  orgId: Scalars['ID']['input'];
+  name: Scalars['String']['input'];
+}>;
+
+
+export type GetOrgVariableQuery = { __typename?: 'Query', orgVariable?: { __typename?: 'OrgVariable', category: OrgVariableCategory, createdAt: string, id: string, name: string, orgId: string, updatedAt?: string | null, value?: string | null } | null };
+
 
 export const ListTemplatesMinimalDocument = gql`
     query listTemplatesMinimal($orgId: ID!) {
@@ -6979,6 +6987,19 @@ export const CreateOrgVariableDocument = gql`
   }
 }
     `;
+export const GetOrgVariableDocument = gql`
+    query getOrgVariable($orgId: ID!, $name: String!) {
+  orgVariable(where: {orgId: $orgId, name: $name}) {
+    category
+    createdAt
+    id
+    name
+    orgId
+    updatedAt
+    value
+  }
+}
+    `;
 
 export type SdkFunctionWrapper = <T>(action: (requestHeaders?:Record<string, string>) => Promise<T>, operationName: string, operationType?: string, variables?: any) => Promise<T>;
 
@@ -7010,6 +7031,9 @@ export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = 
     },
     createOrgVariable(variables: CreateOrgVariableMutationVariables, requestHeaders?: GraphQLClientRequestHeaders): Promise<CreateOrgVariableMutation> {
       return withWrapper((wrappedRequestHeaders) => client.request<CreateOrgVariableMutation>(CreateOrgVariableDocument, variables, {...requestHeaders, ...wrappedRequestHeaders}), 'createOrgVariable', 'mutation', variables);
+    },
+    getOrgVariable(variables: GetOrgVariableQueryVariables, requestHeaders?: GraphQLClientRequestHeaders): Promise<GetOrgVariableQuery> {
+      return withWrapper((wrappedRequestHeaders) => client.request<GetOrgVariableQuery>(GetOrgVariableDocument, variables, {...requestHeaders, ...wrappedRequestHeaders}), 'getOrgVariable', 'query', variables);
     }
   };
 }

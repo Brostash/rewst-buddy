@@ -55,15 +55,14 @@ class Storage {
     // Implementation when ready
     throw new Error("getAllOrgs not implemented yet");
   }
-
-  async upsertOrgVariable(client: RewstClient, value: string) {
+  async upsertOrgVariable(client: RewstClient, name: string, value: string) {
     this.ensureInitialized();
     const input: CreateOrgVariableMutationVariables = {
       orgVariable: {
         cascade: false,
         category: OrgVariableCategory.General,
         id: undefined,
-        name: "rewst-buddy-config",
+        name: name,
         orgId: client.orgId,
         packConfigId: undefined,
         value: value,
@@ -72,6 +71,39 @@ class Storage {
 
     const response = await client.sdk.createOrgVariable(input);
     return response;
+  }
+
+  /**
+   * Get an organization variable value by name
+   */
+  async getOrgVariable(client: RewstClient, name: string): Promise<string | null> {
+    try {
+      const response = await client.sdk.getOrgVariable({
+        orgId: client.orgId,
+        name: name
+      });
+      return response.orgVariable?.value || null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Check if cloud sync is enabled for folder structure (local setting per org)
+   */
+  isCloudSyncEnabled(client: RewstClient): boolean {
+    this.ensureInitialized();
+    const key = `cloudSyncEnabled-${client.orgId}`;
+    return this.context.globalState.get(key, false);
+  }
+
+  /**
+   * Set cloud sync setting for folder structure (local setting per org)
+   */
+  setCloudSyncEnabled(client: RewstClient, enabled: boolean): void {
+    this.ensureInitialized();
+    const key = `cloudSyncEnabled-${client.orgId}`;
+    this.context.globalState.update(key, enabled);
   }
 
   // Additional utility methods for storage management

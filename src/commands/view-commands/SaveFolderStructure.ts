@@ -42,17 +42,36 @@ export class SaveFolderStructure extends GenericCommand {
 
         // Create comprehensive org data structure
         const existingOrgData = storage.getRewstOrgData(org.id);
-        const orgData = {
-          ...(existingOrgData !== '{}' ? JSON.parse(existingOrgData) : {}),
-          templateFolderStructure: {
-            folders: folderStructure,
-            templatePlacements: templatePlacements,
-            lastUpdated: new Date().toISOString()
-          }
+        const templateFolderStructure = {
+          folders: folderStructure,
+          templatePlacements: templatePlacements,
+          lastUpdated: new Date().toISOString()
         };
 
+        const orgData = {
+          ...(existingOrgData !== '{}' ? JSON.parse(existingOrgData) : {}),
+          templateFolderStructure
+        };
+
+        // Always save locally
         storage.setRewstOrgData(org.id, JSON.stringify(orgData));
-        log.info(`Saved folder structure for org "${org.label}" (${org.id}) with ${folderStructure.length} folders`);
+        log.info(`Saved folder structure locally for org "${org.label}" (${org.id}) with ${folderStructure.length} folders`);
+
+        // Check if cloud sync is enabled and save to cloud if so
+        try {
+          const cloudSyncEnabled = storage.isCloudSyncEnabled(entry.client);
+          if (cloudSyncEnabled) {
+            await storage.upsertOrgVariable(entry.client, "rewst-buddy-folder-structure", JSON.stringify(templateFolderStructure));
+            log.info(`Saved folder structure to cloud for org "${org.label}" (${org.id})`);
+            vscode.window.showInformationMessage(`Folder structure saved locally and to cloud for ${org.label}`);
+          } else {
+            log.info(`Cloud sync disabled for org "${org.label}" (${org.id}) - only saved locally`);
+            vscode.window.showInformationMessage(`Folder structure saved locally for ${org.label}`);
+          }
+        } catch (error) {
+          log.error(`Failed to save folder structure to cloud for org "${org.label}": ${error}`);
+          vscode.window.showWarningMessage(`Folder structure saved locally but failed to sync to cloud: ${error}`);
+        }
 
         // Test deserialization
         const storedData = storage.getRewstOrgData(org.id);
