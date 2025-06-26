@@ -145,6 +145,12 @@
         "title": "Check for Cloud Updates",
         "category": "Rewst",
         "icon": "$(sync)"
+      },
+      {
+        "command": "rewst-buddy.DeleteFolder",
+        "title": "Delete Folder",
+        "category": "Rewst",
+        "icon": "$(trash)"
       }
     ],
     "views": {
@@ -212,6 +218,11 @@
           "group": "inline"
         },
         {
+          "command": "rewst-buddy.DeleteFolder",
+          "when": "viewItem =~ /is-templatefolder/",
+          "group": "inline"
+        },
+        {
           "submenu": "rewst-buddy.templateType",
           "when": "viewItem =~ /is-template/"
         },
@@ -221,8 +232,18 @@
           "group": "fileops@10"
         },
         {
+          "command": "rewst-buddy.DeleteFolder",
+          "when": "viewItem =~ /is-templatefolder/",
+          "group": "fileops@20"
+        },
+        {
           "command": "rewst-buddy.DeleteTemplate",
           "when": "viewItem =~ /is-template/",
+          "group": "fileops@100"
+        },
+        {
+          "command": "rewst-buddy.DeleteFolder",
+          "when": "viewItem =~ /is-templatefolder/",
           "group": "fileops@100"
         },
         {

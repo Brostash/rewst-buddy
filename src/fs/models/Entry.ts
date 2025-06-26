@@ -264,7 +264,7 @@ export abstract class Entry implements IEntry {
     const classes = [
       params.hasTemplateFolders ? "has-templatefolders" : "",
       params.hasTemplates ? "has-templates" : "",
-      params.isTemplateFolder ? "is-TemplateFolder" : "",
+      params.isTemplateFolder ? "is-templatefolder" : "",
       params.isRenamable ? "renamable" : "",
       params.isTemplate ? "is-template" : "",
       params.isOrg ? "is-org" : "",

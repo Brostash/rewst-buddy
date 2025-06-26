@@ -6,3 +6,4 @@ export { OpenOrgInFolder } from "./OpenOrgInFolder";
 export { ToggleCloudSync } from "./ToggleCloudSync";
 export { RefreshStructureFromCloud } from "./RefreshStructureFromCloud";
 export { CheckForCloudUpdates } from "./CheckForCloudUpdates";
+export { DeleteFolder } from "./DeleteFolder";
