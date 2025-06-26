@@ -34,7 +34,8 @@ export class SaveFolderStructure extends GenericCommand {
             templatePlacements.push({
               templateId: templateId,
               folderId: template.parent.id,
-              templateName: template.label
+              templateName: template.label,
+              templateExt: template.ext || 'ps1' // Save extension, default to ps1
             });
           }
         }

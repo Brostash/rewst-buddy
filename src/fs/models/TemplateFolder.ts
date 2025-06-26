@@ -16,6 +16,7 @@ export interface TemplatePlacement {
   templateId: string;
   folderId: string;
   templateName: string;
+  templateExt?: string;
 }
 
 export interface StoredOrgStructure {
@@ -168,14 +169,19 @@ export class TemplateFolder extends Entry {
         log.info(`Creating ${templatesForThisFolder.length} templates in folder "${this.label}" (${this.id})`);
 
         templatesForThisFolder.forEach((template: { id: string; name: string }) => {
+          // Find stored placement to get the correct extension
+          const placement = templatePlacements.find(p => p.templateId === template.id);
+          const templateExt = placement?.templateExt || "ps1"; // Use stored extension or default to ps1
+
           const input: EntryInput = {
             client: this.client,
-            ext: "ps1",
+            ext: templateExt,
             id: template.id,
             label: template.name,
             parent: this,
           };
           new Template(input);
+          log.info(`Created template "${template.name}" with extension: ${templateExt}`);
         });
       } else {
         // Non-root folder initialization - create templates assigned to this folder
@@ -210,14 +216,16 @@ export class TemplateFolder extends Entry {
           templatesForThisFolder.forEach(placement => {
             const apiTemplate = allTemplates.find(t => t.id === placement.templateId);
             if (apiTemplate) {
+              const templateExt = placement.templateExt || "ps1"; // Use stored extension or default
               const input: EntryInput = {
                 client: this.client,
-                ext: "ps1",
+                ext: templateExt,
                 id: apiTemplate.id,
                 label: apiTemplate.name,
                 parent: this,
               };
               new Template(input);
+              log.info(`Created template "${apiTemplate.name}" in subfolder with extension: ${templateExt}`);
             } else {
               log.error(`Template ${placement.templateId} not found in API response for folder ${this.label}`);
             }

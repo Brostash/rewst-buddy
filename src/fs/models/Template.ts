@@ -10,10 +10,9 @@ export class Template extends Entry {
 
   type: FileType = FileType.File;
   data?: Uint8Array;
-  ext = "ps1";
 
   constructor(input: EntryInput) {
-    log.info(`Creating Template: ${input.label} (id: ${input.id})`);
+    log.info(`Creating Template: ${input.label} (id: ${input.id}) with extension: ${input.ext || 'ps1'}`);
     super(input, {
       hasTemplates: false,
       hasTemplateFolders: false,
@@ -21,6 +20,11 @@ export class Template extends Entry {
       isTemplateFolder: false,
       isTemplate: true,
     });
+
+    // Set default extension if not provided
+    if (!this.ext) {
+      this.ext = "ps1";
+    }
   }
 
   getCommand(): vscode.Command {
@@ -89,7 +93,7 @@ export class Template extends Entry {
 
   initialize(): Promise<void> {
     log.info(`Initializing Template: ${this.label} (${this.id})`);
-    
+
     if (this.client === undefined) {
       log.error(`Template ${this.id} has no client - this should never happen`);
       throw new Error("Client should always exist on templates");
@@ -103,7 +107,7 @@ export class Template extends Entry {
   static async create(...args: any): Promise<Template> {
     const folder: TemplateFolder = args[0];
     const label: string = args[1];
-    
+
     log.info(`Creating new Template "${label}" in folder "${folder.label}" (${folder.orgId})`);
     try {
       const input = {
