@@ -15,6 +15,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // Use the console to output diagnostic information (log.info) and errors (console.error)
   // This line of code will only be executed once when your extension is activated
 
+  // Store context globally for access by Template conflict modal
+  (globalThis as any).rewstBuddyContext = context;
+
   log.init(context);
   storage.init(context);
   log.info('Congratulations, your extension "rewst-buddy" is now active!');

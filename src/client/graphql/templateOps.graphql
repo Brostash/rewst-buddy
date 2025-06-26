@@ -3,6 +3,7 @@ query listTemplatesMinimal($orgId : ID!) {
         id
         name
         orgId
+        updatedAt
     }
 }
 
@@ -16,6 +17,7 @@ mutation createTemplateMinimal($name : String!, $orgId : ID!) {
     language 
     cloneOverrides 
     orgId
+    updatedAt
   } 
 } 
 
@@ -39,6 +41,7 @@ mutation UpdateTemplateBody($body: String, $id : ID!) {
     updateTemplate( template: { body: $body, id: $id }) {
         body
         id
+        updatedAt
     }
 }
 
@@ -46,6 +49,7 @@ mutation UpdateTemplateName($name: String, $id : ID!) {
     updateTemplate( template: { name: $name, id: $id }) {
         name
         id
+        updatedAt
     }
 }
 
@@ -53,6 +57,7 @@ mutation UpdateTemplateName($name: String, $id : ID!) {
 query getTemplateBody($id: ID!) {
     template(where: { id: $id }) {
         body
+        updatedAt
     }
 }
 

@@ -3,6 +3,7 @@ import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import vscode from "vscode";
 import { TemplateFolder } from "./TemplateFolder";
 import { log } from "@log";
+import { tmpdir } from "os";
 
 export class Template extends Entry {
   rtype: RType = RType.Template;
@@ -10,6 +11,7 @@ export class Template extends Entry {
 
   type: FileType = FileType.File;
   data?: Uint8Array;
+  private lastKnownUpdatedAt?: string; // Store the updatedAt timestamp for conflict detection
 
   constructor(input: EntryInput) {
     log.info(`Creating Template: ${input.label} (id: ${input.id}) with extension: ${input.ext || 'ps1'}`);
@@ -36,30 +38,124 @@ export class Template extends Entry {
   }
 
   async readData(): Promise<string> {
-    log.info(` loading template ${this.id}`);
+    log.info(`Loading template ${this.id}`);
     const response = await this.client.sdk.getTemplateBody({ id: this.id });
     if (typeof response.template?.body !== "string") {
       throw new Error(`Couldn't load template ${this.id}`);
     }
-    log.info(`Done loading template ${this.id}`);
+
+    // Store the updatedAt timestamp for conflict detection
+    this.lastKnownUpdatedAt = response.template.updatedAt;
+    log.info(`Template ${this.id} loaded, updatedAt: ${this.lastKnownUpdatedAt}`);
+
     return response.template.body;
   }
 
   async writeData(data: string): Promise<boolean> {
     log.info(`Writing data to Template: ${this.label} (${this.id}), size: ${data.length} chars`);
+
     try {
+      let dataToWrite = data;
+      let shouldNotifyFileChange = false;
+
+      // Check for conflicts before writing
+      if (this.lastKnownUpdatedAt) {
+        const currentResponse = await this.client.sdk.getTemplateBody({ id: this.id });
+        const currentUpdatedAt = currentResponse.template?.updatedAt;
+
+        if (currentUpdatedAt && currentUpdatedAt !== this.lastKnownUpdatedAt) {
+          log.info(`Conflict detected for template ${this.id}. Expected: ${this.lastKnownUpdatedAt}, Current: ${currentUpdatedAt}`);
+
+          // Show conflict resolution dialog
+          const action = await this.showConflictDialog(data, currentResponse.template?.body || '');
+
+          if (action === 'cancel') {
+            log.info('User cancelled write operation due to conflict');
+            return false;
+          } else if (action === 'force') {
+            // Check if we have resolved content from conflict resolution
+            if ((this as any).resolvedConflictContent) {
+              dataToWrite = (this as any).resolvedConflictContent;
+              delete (this as any).resolvedConflictContent; // Clean up
+              shouldNotifyFileChange = true; // Need to refresh editor since content changed
+              log.info('Using resolved conflict content for write');
+            }
+          }
+          // If action is 'force', continue with the write
+        }
+      }
+
       const payload = {
         id: this.id,
-        body: data,
+        body: dataToWrite,
       };
+
       const response = await this.client.sdk.UpdateTemplateBody(payload);
-      //some kinda validation
+
+      // Update our known timestamp
+      if (response.updateTemplate?.updatedAt) {
+        this.lastKnownUpdatedAt = response.updateTemplate.updatedAt;
+        log.info(`Template ${this.id} updated, new updatedAt: ${this.lastKnownUpdatedAt}`);
+      }
+
+      // If we used cloud content, notify VS Code to refresh the editor
+      if (shouldNotifyFileChange) {
+        this.notifyFileChanged();
+      }
+
       log.info(`Successfully wrote data to Template: ${this.label}`);
       return true;
     } catch (error) {
       log.error(`Failed to write data to Template ${this.label} (${this.id}): ${error}`);
       throw error;
     }
+  }
+
+  private async showConflictDialog(localData: string, serverData: string): Promise<'force' | 'view-diff' | 'cancel'> {
+    const choice = await vscode.window.showWarningMessage(
+      `Template "${this.label}" was modified by someone else. Choose which version to keep:`,
+      'Use My Version',
+      'Use Cloud Version',
+      'Cancel'
+    );
+
+    switch (choice) {
+      case 'Use My Version':
+        return 'force'; // Use original local data
+      case 'Use Cloud Version':
+        // Store server data for writing
+        (this as any).resolvedConflictContent = serverData;
+        return 'force'; // Use server data
+      default:
+        return 'cancel';
+    }
+  }
+
+  private notifyFileChanged(): void {
+    // This will trigger VS Code to re-read the file and update the editor
+    const uri = this.getUri();
+    log.info(`Notifying VS Code of file change for template: ${this.label} (${uri.toString()})`);
+
+    // Force VS Code to refresh the document by closing and reopening it
+    // This is a workaround since we can't directly access the file system provider from here
+    setTimeout(async () => {
+      try {
+        // Find the document if it's open
+        const document = vscode.workspace.textDocuments.find(doc => doc.uri.toString() === uri.toString());
+        if (document) {
+          // Close the document first
+          await vscode.window.showTextDocument(document);
+          await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+
+          // Then reopen it to show the updated content
+          setTimeout(async () => {
+            await vscode.commands.executeCommand('vscode.open', uri);
+          }, 50);
+        }
+      } catch (error) {
+        log.error(`Failed to refresh editor for template ${this.label}: ${error}`);
+      }
+    }, 100);
   }
 
   async setLabel(label: string): Promise<boolean> {
@@ -79,6 +175,12 @@ export class Template extends Entry {
         log.error(message);
         return false;
       }
+
+      // Update timestamp after successful rename
+      if (response.updateTemplate?.updatedAt) {
+        this.lastKnownUpdatedAt = response.updateTemplate.updatedAt;
+      }
+
       log.info(`Successfully updated Template label to: ${label}`);
       return true;
     } catch (error) {
@@ -133,6 +235,12 @@ export class Template extends Entry {
       };
 
       const newTemplate = new Template(templateInput);
+
+      // Set initial timestamp if available
+      if (template.updatedAt) {
+        newTemplate.lastKnownUpdatedAt = template.updatedAt;
+      }
+
       log.info(`Successfully created Template: ${template.name}`);
       return newTemplate;
     } catch (error) {
@@ -171,6 +279,12 @@ export async function createTemplate(
     };
 
     const newTemplate = new Template(templateInput);
+
+    // Set initial timestamp if available
+    if (template.updatedAt) {
+      (newTemplate as any).lastKnownUpdatedAt = template.updatedAt;
+    }
+
     log.info(`Successfully created Template: ${template.name}`);
     return newTemplate;
   } catch (error) {

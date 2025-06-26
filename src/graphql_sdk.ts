@@ -6832,7 +6832,7 @@ export type ListTemplatesMinimalQueryVariables = Exact<{
 }>;
 
 
-export type ListTemplatesMinimalQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, orgId: string }> };
+export type ListTemplatesMinimalQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, orgId: string, updatedAt: string }> };
 
 export type CreateTemplateMinimalMutationVariables = Exact<{
   name: Scalars['String']['input'];
@@ -6840,7 +6840,7 @@ export type CreateTemplateMinimalMutationVariables = Exact<{
 }>;
 
 
-export type CreateTemplateMinimalMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, language: string, cloneOverrides?: any | null, orgId: string } | null };
+export type CreateTemplateMinimalMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, language: string, cloneOverrides?: any | null, orgId: string, updatedAt: string } | null };
 
 export type UpdateTemplateMutationVariables = Exact<{
   template: TemplateUpdateInput;
@@ -6855,7 +6855,7 @@ export type UpdateTemplateBodyMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateBodyMutation = { __typename?: 'Mutation', updateTemplate?: { __typename?: 'Template', body: string, id: string } | null };
+export type UpdateTemplateBodyMutation = { __typename?: 'Mutation', updateTemplate?: { __typename?: 'Template', body: string, id: string, updatedAt: string } | null };
 
 export type UpdateTemplateNameMutationVariables = Exact<{
   name?: InputMaybe<Scalars['String']['input']>;
@@ -6863,14 +6863,14 @@ export type UpdateTemplateNameMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateNameMutation = { __typename?: 'Mutation', updateTemplate?: { __typename?: 'Template', name: string, id: string } | null };
+export type UpdateTemplateNameMutation = { __typename?: 'Mutation', updateTemplate?: { __typename?: 'Template', name: string, id: string, updatedAt: string } | null };
 
 export type GetTemplateBodyQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetTemplateBodyQuery = { __typename?: 'Query', template?: { __typename?: 'Template', body: string } | null };
+export type GetTemplateBodyQuery = { __typename?: 'Query', template?: { __typename?: 'Template', body: string, updatedAt: string } | null };
 
 export type UserOrganizationQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -6891,6 +6891,7 @@ export const ListTemplatesMinimalDocument = gql`
     id
     name
     orgId
+    updatedAt
   }
 }
     `;
@@ -6905,6 +6906,7 @@ export const CreateTemplateMinimalDocument = gql`
     language
     cloneOverrides
     orgId
+    updatedAt
   }
 }
     `;
@@ -6928,6 +6930,7 @@ export const UpdateTemplateBodyDocument = gql`
   updateTemplate(template: {body: $body, id: $id}) {
     body
     id
+    updatedAt
   }
 }
     `;
@@ -6936,6 +6939,7 @@ export const UpdateTemplateNameDocument = gql`
   updateTemplate(template: {name: $name, id: $id}) {
     name
     id
+    updatedAt
   }
 }
     `;
@@ -6943,6 +6947,7 @@ export const GetTemplateBodyDocument = gql`
     query getTemplateBody($id: ID!) {
   template(where: {id: $id}) {
     body
+    updatedAt
   }
 }
     `;
