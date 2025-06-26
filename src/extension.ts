@@ -32,17 +32,16 @@ export async function activate(context: vscode.ExtensionContext) {
     fs: view.rewstfs,
   };
 
-
   CommandInitiater.registerCommands(ctx);
 
   // Initialize background sync service
   const backgroundSync = getBackgroundSyncService(context);
   backgroundSync.start();
   context.subscriptions.push({
-    dispose: () => backgroundSync.dispose()
+    dispose: () => backgroundSync.dispose(),
   });
 
-  vscode.commands.executeCommand('rewst-buddy.LoadClients');
+  vscode.commands.executeCommand("rewst-buddy.LoadClients");
 
   log.info("Done loading");
 }
@@ -50,5 +49,5 @@ export async function activate(context: vscode.ExtensionContext) {
 // This method is called when your extension is deactivated
 export function deactivate() {
   // Filesystem provider is automatically disposed via RewstView's context.subscriptions
-  log.info('Deactivating rewst-buddy extension');
+  log.info("Deactivating rewst-buddy extension");
 }
