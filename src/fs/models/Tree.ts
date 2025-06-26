@@ -30,12 +30,6 @@ export class Tree implements ITree<Entry> {
   almostOrgs = new Map<string, AlmostOrg>();
   //   root: vscode.TreeItem = {};
   constructor() {
-    log.info('Initializing Tree with default AlmostOrgs');
-    [
-      new AlmostOrg({ label: "t1", orgId: "1" }),
-      new AlmostOrg({ label: "t2", orgId: "2" }),
-    ].forEach((ao) => this.almostOrgs.set(ao.orgId, ao));
-    log.info(`Tree initialized with ${this.almostOrgs.size} AlmostOrgs`);
   }
 
   getOrgId(uri: vscode.Uri): string {
