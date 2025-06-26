@@ -169,11 +169,15 @@ export abstract class Entry implements IEntry {
     const newPath = path.posix.join(
       "/",
       parentUri.path,
-      this.ext ? `${this.label}.${this.ext}` : this.label
+      this.labelWithExtension()
     );
 
     this.resourceUri = parentUri.with({ path: newPath });
     return this.resourceUri;
+  }
+
+  labelWithExtension(): string {
+    return this.ext ? `${this.label}.${this.ext}` : this.label;
   }
 
   private validateLabel(label: string): void {
