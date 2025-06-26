@@ -114,7 +114,7 @@ export default class RewstFS implements vscode.FileSystemProvider {
     }
 
     if (srcEntity instanceof Template) {
-      if (destEntity.contextValueParams.hasTemplates) {
+      if (!destEntity.contextValueParams.hasTemplates) {
         const message = "Can't move template into not a template folder";
         vscode.window.showErrorMessage(message);
         throw new Error(message);
