@@ -6,12 +6,17 @@ import { isDirective } from "graphql";
 import { RewstClient } from "@client/index";
 import { log } from "@log";
 import { CommandContext } from "@commands/models/GenericCommand";
-
 export enum RType {
   Root,
   Org,
   Template,
   TemplateFolder,
+}
+
+export interface LabelValidationResult {
+  isValid: boolean;
+  error?: string;
+  conflictingLabel?: string;
 }
 
 export interface ContextValueParams {
@@ -44,7 +49,7 @@ interface IEntry extends EntryInput, vscode.TreeItem, vscode.FileStat {
 
   getLabel(): string;
   setLabel(label: string): Promise<boolean> | void;
-  isValidLabel(label: string): boolean;
+  isValidLabel(label: string, forbiddenLabels?: string[]): LabelValidationResult;
 
   contextValueParams: ContextValueParams;
   getContextValue(params: ContextValueParams): string;
@@ -180,12 +185,6 @@ export abstract class Entry implements IEntry {
     return this.ext ? `${this.label}.${this.ext}` : this.label;
   }
 
-  private validateLabel(label: string): void {
-    if (!/^[a-zA-Z0-9[\]\-_ ]+$/.test(label)) {
-      throw new Error(`Invalid label: "${label}". Only alphanumerics, spaces, -, _, [ ] allowed`);
-    }
-  }
-
   getLabel(): string {
     return this.label;
   }
@@ -221,8 +220,42 @@ export abstract class Entry implements IEntry {
     newParent.addChild(this);
   }
 
-  isValidLabel(label: string): boolean {
-    return /^[a-zA-Z0-9[\]\- ]*$/.test(label);
+  isValidLabel(label: string, forbiddenLabels?: string[]): LabelValidationResult {
+    // Normalize the input by trimming whitespace
+    const normalizedLabel = label.trim();
+
+    // Check for empty label
+    if (!normalizedLabel) {
+      return {
+        isValid: false,
+        error: "Label cannot be empty"
+      };
+    }
+
+    // Check character validation
+    if (!/^[a-zA-Z0-9[\]\-_ ]+$/.test(normalizedLabel)) {
+      return {
+        isValid: false,
+        error: "Label contains invalid characters. Only letters, numbers, spaces, hyphens, underscores, and brackets are allowed"
+      };
+    }
+
+    // Check against forbidden labels (case-insensitive)
+    if (forbiddenLabels && forbiddenLabels.length > 0) {
+      for (const forbidden of forbiddenLabels) {
+        if (forbidden.trim().toLowerCase() === normalizedLabel.toLowerCase()) {
+          return {
+            isValid: false,
+            error: `A ${this.constructor.name.toLowerCase()} named "${forbidden.trim()}" already exists in this location`,
+            conflictingLabel: forbidden.trim()
+          };
+        }
+      }
+    }
+
+    return {
+      isValid: true
+    };
   }
 
   getContextValue(

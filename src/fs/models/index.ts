@@ -1,4 +1,4 @@
-import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
+import { ContextValueParams, Entry, EntryInput, RType, LabelValidationResult } from "./Entry";
 import { Template, createTemplate } from "./Template";
 import { TemplateFolder, createTemplateFolder } from "./TemplateFolder";
 import { Org, AlmostOrg } from "./Org";
@@ -9,6 +9,7 @@ export {
   Entry,
   EntryInput,
   RType,
+  LabelValidationResult,
   Template,
   createTemplate,
   TemplateFolder,

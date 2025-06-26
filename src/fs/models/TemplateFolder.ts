@@ -72,10 +72,12 @@ export class TemplateFolder extends Entry {
       throw error;
     }
   }
+
   setLabel(label: string): void {
     log.info(`Setting label for TemplateFolder ${this.id}: "${this.label}" -> "${label}"`);
     this.label = label;
   }
+
   async initialize(): Promise<void> {
     if (this.initialized) {
       log.info(`TemplateFolder ${this.label} (${this.id}) already initialized`);
@@ -105,6 +107,7 @@ export class TemplateFolder extends Entry {
                 const oldId = this.id;
                 this.id = rootFolder.id;
 
+
                 // Update parent's children reference if needed
                 if (this.parent) {
                   const childIndex = this.parent.children.findIndex(child => child === this);
@@ -126,10 +129,6 @@ export class TemplateFolder extends Entry {
           log.error(`Failed to load stored folder structure: ${error}`);
           log.info(`Falling back to API-only initialization for org ${this.parent.id}`);
         }
-
-        // Top level template folder not renamable
-        this.contextValueParams.isRenamable = false;
-        this.contextValue = this.getContextValue();
 
         // Load templates from API, but only create ones that belong in this folder
         log.info(`Loading templates for org ${this.orgId}`);

@@ -126,6 +126,8 @@ export class Org extends Entry {
         };
 
         const rootTemplateFolder = new TemplateFolder(templateFolderInput);
+        rootTemplateFolder.contextValueParams.isRenamable = false;
+        rootTemplateFolder.contextValue = rootTemplateFolder.getContextValue();
 
         // The template folder will be added as a child via the parent constructor
         // No need to manually call addChild as it's handled in the EntryInput.parent logic
