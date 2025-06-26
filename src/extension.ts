@@ -32,6 +32,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   CommandInitiater.registerCommands(ctx);
 
+  vscode.commands.executeCommand('rewst-buddy.LoadClients');
+
   log.info("Done loading");
 }
 

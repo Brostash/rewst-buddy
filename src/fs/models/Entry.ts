@@ -171,7 +171,9 @@ export abstract class Entry implements IEntry {
       parentUri.path,
       this.ext ? `${this.label}.${this.ext}` : this.label
     );
-    return parentUri.with({ path: newPath });
+
+    this.resourceUri = parentUri.with({ path: newPath });
+    return this.resourceUri;
   }
 
   private validateLabel(label: string): void {

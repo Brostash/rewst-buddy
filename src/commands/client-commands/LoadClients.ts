@@ -18,7 +18,7 @@ export class LoadClients extends GenericCommand {
 
       for (const client of clients) {
         log.info(`Creating org for client: ${client.orgId}`);
-        const org = await Org.create(this.cmdContext, client.orgId);
+        const org = await Org.create(this.cmdContext, client);
 
         view.rewstfs.tree.newOrg(org);
         log.info(`Successfully loaded org: ${org.label} (${org.orgId})`);
@@ -26,7 +26,7 @@ export class LoadClients extends GenericCommand {
 
       log.info('Refreshing view after loading clients');
       this.cmdContext.view.refresh();
-      
+
       log.info(`LoadClients command completed successfully - loaded ${clients.length} clients`);
       return;
     } catch (error) {

@@ -147,14 +147,21 @@ export class Org extends Entry {
 
 
   getUri(): vscode.Uri {
-    return RewstFS.uriOf(`${this.label}`);
+    this.resourceUri = RewstFS.uriOf(`${this.label}`);
+    return this.resourceUri;
   }
 
   static async create(cmdContext: CommandContext, ...args: any): Promise<Org> {
     log.info(`Creating new Org via static create method`);
+
+    let client: RewstClient;
     try {
-      const client = await RewstClient.create(cmdContext.context);
-      log.info(`Created RewstClient for org: ${client.orgId}`);
+      if (args[0] instanceof RewstClient) {
+        client = args[0];
+      } else {
+        client = await RewstClient.create(cmdContext.context);
+        log.info(`Created RewstClient for org: ${client.orgId}`);
+      }
 
       const orgInput: EntryInput = {
         client: client,
