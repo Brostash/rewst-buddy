@@ -5,6 +5,7 @@
 
 import vscode from "vscode";
 import { Template, Tree } from "./models";
+import { log } from '@log';
 
 export default class RewstFS implements vscode.FileSystemProvider {
   tree: Tree;
@@ -22,12 +23,19 @@ export default class RewstFS implements vscode.FileSystemProvider {
   async readDirectory(
     uri: vscode.Uri
   ): Promise<[string, vscode.FileType][]> {
-    const entry = this.tree.lookupEntry(uri);
+    log.info(`[SEARCH DEBUG] readDirectory called for URI: ${uri.toString()}`);
+    const entry = await this.tree.lookupEntry(uri);
     const result: [string, vscode.FileType][] = [];
 
-    for (const child of await entry.getChildren()) {
-      result.push([child.getLabel(), child.type]);
+    const children = await entry.getChildren();
+    log.info(`[SEARCH DEBUG] Found ${children.length} children in ${uri.toString()}`);
+
+    for (const child of children) {
+      result.push([child.labelWithExtension(), child.type]);
+      log.info(`[SEARCH DEBUG] Child: ${child.labelWithExtension()} (type: ${child.type})`);
     }
+
+    log.info(`[SEARCH DEBUG] Returning ${result.length} entries for ${uri.toString()}`);
     return result;
   }
 
@@ -39,13 +47,20 @@ export default class RewstFS implements vscode.FileSystemProvider {
 
   //#region fs ops
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
-    return this.tree.lookupEntry(uri);
+    log.info(`[SEARCH DEBUG] stat() called for URI: ${uri.toString()}`);
+    const entry = await this.tree.lookupEntry(uri);
+    log.info(`[SEARCH DEBUG] stat() found entry: ${entry.label} (type: ${entry.type}, initialized: ${entry.initialized})`);
+    return entry;
   }
 
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
-    const entry = this.tree.lookupEntry(uri);
-    return Buffer.from(await entry.readData());
+    log.info(`[SEARCH DEBUG] readFile() called for URI: ${uri.toString()}`);
+    const entry = await this.tree.lookupEntry(uri);
+    log.info(`[SEARCH DEBUG] readFile() found entry: ${entry.label} (type: ${entry.type}, initialized: ${entry.initialized})`);
+    const data = await entry.readData();
+    log.info(`[SEARCH DEBUG] readFile() returning ${data.length} characters for ${entry.label}`);
+    return Buffer.from(data);
   }
 
   async writeFile(
@@ -53,16 +68,16 @@ export default class RewstFS implements vscode.FileSystemProvider {
     content: Uint8Array,
     options: { readonly create: boolean; readonly overwrite: boolean }
   ): Promise<void> {
-    const entry = this.tree.lookupEntry(uri);
+    const entry = await this.tree.lookupEntry(uri);
     await entry.writeData(content.toString());
   }
 
-  delete(
+  async delete(
     uri: vscode.Uri,
     options: { readonly recursive: boolean }
-  ): void | Promise<void> {
+  ): Promise<void> {
     try {
-      this.tree.removeEntry(uri);
+      await this.tree.removeEntry(uri);
       this._fireSoon({ type: vscode.FileChangeType.Deleted, uri });
     } catch (error) {
       throw vscode.FileSystemError.FileNotFound(uri);
@@ -87,9 +102,9 @@ export default class RewstFS implements vscode.FileSystemProvider {
     throw vscode.FileSystemError.Unavailable("Copy operation not supported");
   }
 
-  move(source: vscode.Uri, destination: vscode.Uri): void {
-    const srcEntity = this.tree.lookupEntry(source);
-    const destEntity = this.tree.lookupEntry(destination);
+  async move(source: vscode.Uri, destination: vscode.Uri): Promise<void> {
+    const srcEntity = await this.tree.lookupEntry(source);
+    const destEntity = await this.tree.lookupEntry(destination);
 
     //maybe this validation should be moved somewhere else?
     // seems like this might grow quite large as things become more complex
@@ -117,6 +132,7 @@ export default class RewstFS implements vscode.FileSystemProvider {
     this._emitter.event;
 
   watch(_resource: vscode.Uri): vscode.Disposable {
+    log.info(`[SEARCH DEBUG] watch() called for URI: ${_resource.toString()}`);
     // ignore, fires for all changes...
     return new vscode.Disposable(() => { });
   }

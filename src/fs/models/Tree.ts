@@ -7,9 +7,9 @@ import RewstClient from "client/RewstClient";
 import { log } from "@log";
 
 interface ITree<T extends Entry> {
-  lookupEntry(uri: vscode.Uri): Entry | undefined;
-  insertEntry(t: T): void;
-  removeEntry(uri: vscode.Uri): void;
+  lookupEntry(uri: vscode.Uri): Promise<Entry | undefined>;
+  insertEntry(t: T): Promise<void>;
+  removeEntry(uri: vscode.Uri): Promise<void>;
 }
 
 export function getUriParts(uri: vscode.Uri): string[] {
@@ -62,20 +62,34 @@ export class Tree implements ITree<Entry> {
     throw vscode.FileSystemError.FileNotFound(uri);
   }
 
-  lookupEntry(uri: vscode.Uri): Entry {
+  async lookupEntry(uri: vscode.Uri): Promise<Entry> {
     const orgId = this.getOrgId(uri);
-    log.info(`Looking up entry for URI: ${uri.toString()}, orgId: ${orgId}`);
+    log.info(`[SEARCH DEBUG] Looking up entry for URI: ${uri.toString()}, orgId: ${orgId}`);
     const org = this.orgs.get(orgId);
 
     if (org === undefined) {
-      log.error(`Org not found for URI: ${uri.toString()}, orgId: ${orgId}`);
+      log.error(`[SEARCH DEBUG] Org not found for URI: ${uri.toString()}, orgId: ${orgId}`);
       throw vscode.FileSystemError.FileNotFound(uri);
     }
 
     const parts = getUriParts(uri);
-    log.info(`Traversing ${parts.length} URI parts to find entry`);
+    log.info(`[SEARCH DEBUG] Traversing ${parts.length} URI parts to find entry`);
     let cur: Entry = org;
+
+    // SEARCH FIX: Ensure the org is initialized before traversing
+    if (!cur.initialized && cur.type === vscode.FileType.Directory) {
+      log.info(`[SEARCH DEBUG] Initializing directory entry: ${cur.label}`);
+      try {
+        await cur.initialize();
+        log.info(`[SEARCH DEBUG] Successfully initialized entry: ${cur.label} (children: ${cur.children.length})`);
+      } catch (error) {
+        log.error(`[SEARCH DEBUG] Failed to initialize entry ${cur.label}: ${error}`);
+      }
+    }
+
     for (const part of parts) {
+      log.info(`[SEARCH DEBUG] Current entry: ${cur.label} (initialized: ${cur.initialized}, children: ${cur.children.length})`);
+
       // Handle file extensions - remove extension to get the base label
       const basePart = part.includes('.')
         ? part.substring(0, part.lastIndexOf('.'))
@@ -90,17 +104,37 @@ export class Tree implements ITree<Entry> {
       }
 
       if (match.length !== 1) {
-        log.error(`Entry not found at URI part: ${part} (base: ${basePart}), in parent: ${cur.label}`);
-        log.error(`Available children: ${cur.children.map(c => c.label).join(', ')}`);
-        throw vscode.FileSystemError.FileNotFound(uri);
+        // SEARCH FIX: Try to initialize the parent if it hasn't been initialized
+        if (!cur.initialized && cur.type === vscode.FileType.Directory) {
+          log.info(`[SEARCH DEBUG] Parent not initialized, attempting to initialize: ${cur.label}`);
+          try {
+            await cur.initialize();
+            log.info(`[SEARCH DEBUG] Initialized parent, retrying search. Children: ${cur.children.length}`);
+
+            // Retry the search after initialization
+            match = cur.children.filter((c) => c.label === basePart || c.label === part);
+            if (match.length !== 1) {
+              match = cur.children.filter((c) => c.getUri().toString() === uri.toString());
+            }
+          } catch (error) {
+            log.error(`[SEARCH DEBUG] Failed to initialize parent ${cur.label}: ${error}`);
+          }
+        }
+
+        if (match.length !== 1) {
+          log.error(`[SEARCH DEBUG] Entry not found at URI part: ${part} (base: ${basePart}), in parent: ${cur.label}`);
+          log.error(`[SEARCH DEBUG] Parent initialized: ${cur.initialized}, children count: ${cur.children.length}`);
+          log.error(`[SEARCH DEBUG] Available children: ${cur.children.map(c => c.label).join(', ')}`);
+          throw vscode.FileSystemError.FileNotFound(uri);
+        }
       }
       cur = match[0];
     }
-    log.info(`Successfully found entry: ${cur.label} (${cur.id})`);
+    log.info(`[SEARCH DEBUG] Successfully found entry: ${cur.label} (${cur.id})`);
     return cur;
   }
 
-  insertEntry(entry: Entry, parentUri?: vscode.Uri): void {
+  async insertEntry(entry: Entry, parentUri?: vscode.Uri): Promise<void> {
     if (parentUri === undefined) {
       log.info(`Inserting entry "${entry.label}" at root level`);
       if (entry.rtype !== RType.Org) {
@@ -114,7 +148,7 @@ export class Tree implements ITree<Entry> {
     }
 
     log.info(`Inserting entry "${entry.label}" under parent URI: ${parentUri.toString()}`);
-    const parent = this.lookupEntry(parentUri);
+    const parent = await this.lookupEntry(parentUri);
 
     if (parent === undefined) {
       log.error(`Parent not found for URI: ${parentUri.toString()}`);
@@ -125,7 +159,7 @@ export class Tree implements ITree<Entry> {
     }
   }
 
-  removeEntry(uri: vscode.Uri): void {
+  async removeEntry(uri: vscode.Uri): Promise<void> {
     try {
       const orgId = this.getOrgId(uri);
       const parts = getUriParts(uri);
@@ -153,7 +187,7 @@ export class Tree implements ITree<Entry> {
       }
 
       // Handle child entry removal (template, template folder, etc.)
-      const entry = this.lookupEntry(uri);
+      const entry = await this.lookupEntry(uri);
       if (!entry) {
         log.error(`Entry not found for removal at URI: ${uri.toString()}`);
         throw vscode.FileSystemError.FileNotFound(uri);
