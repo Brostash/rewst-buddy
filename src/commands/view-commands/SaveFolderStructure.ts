@@ -1,6 +1,8 @@
 import GenericCommand from "../models/GenericCommand";
 import vscode from "vscode";
 import { log } from "@log";
+import { storage } from "storage/Storage";
+import { Org } from "@fs/models";
 
 export class SaveFolderStructure extends GenericCommand {
   commandName = "SaveFolderStructure";
@@ -10,27 +12,16 @@ export class SaveFolderStructure extends GenericCommand {
       const entry = args[0][0] ?? undefined;
       log.info(`SaveFolderStructure requested for entry: ${entry?.label || 'unknown'}`);
 
-      // TODO: Implement folder structure saving functionality
-      // This should include:
-      // - Entry validation
-      // - Org lookup
-      // - Folder structure serialization
-      // - Storage operations
-      // - Error handling
-      
-      log.info('SaveFolderStructure functionality is currently disabled/not implemented');
-      
-      // if (entry instanceof Entry) {
-      //     const org = this.cmdContext.fs.lookupOrg(entry)
-      //     const structure = org.getTemplateFolderStructure();
+      if (entry) {
+        // Get org ID from the entry's URI using tree lookup
+        const org: Org = this.cmdContext.fs.tree.lookupOrg(entry.getUri());
 
-      //     const data = this.cmdContext.storage.getRewstOrgData(org.id);
-      //     data.label = org.label
-      //     data.templateFolderStructure = structure;
-      //     this.cmdContext.storage.setRewstOrgData(data);
+        // Serialize folder structure using Tree.ts hierarchy
+        const serializedStructure = await org.serialize();
 
-      //     return structure;
-      // }
+        storage.setRewstOrgData(org.id, serializedStructure);
+        log.info(`Saved folder structure for org ID: ${org.id}`);
+      }
 
       log.info('SaveFolderStructure command completed (no-op)');
       return true;

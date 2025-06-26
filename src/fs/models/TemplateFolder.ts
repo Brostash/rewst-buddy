@@ -1,6 +1,7 @@
 import { ContextValueParams, Entry, EntryInput, RType } from "./Entry";
 import vscode from "vscode";
 import { Template } from "./Template";
+import { storage } from "storage/Storage";
 import { log } from "@log";
 
 export interface SerializableTemplateFolder {
@@ -70,18 +71,51 @@ export class TemplateFolder extends Entry {
     log.info(`Initializing TemplateFolder: ${this.label} (${this.id})`);
     try {
       if (this.parent?.rtype === RType.Org) {
-        log.info(`Top-level TemplateFolder detected for org ${this.id}`);
-        //top level template folder not renamable
+        log.info(`Top-level TemplateFolder detected for org ${this.parent.id}`);
+
+        // Fetch stored folder structure from global storage
+        try {
+          const storedData = storage.getRewstOrgData(this.parent.id);
+          if (storedData && storedData !== '{}') {
+            const orgData = JSON.parse(storedData);
+            if (orgData.folderStructure && Array.isArray(orgData.folderStructure)) {
+              log.info(`Found stored folder structure with ${orgData.folderStructure.length} folders for org ${this.parent.id}`);
+
+              // Process stored folder structure to create missing child folders
+              for (const folderData of orgData.folderStructure) {
+                if (folderData.parentId === this.id) {
+                  // This folder should be a child of the current template folder
+                  let childFolder = this.children.find(child => child instanceof TemplateFolder && child.id === folderData.id) as TemplateFolder;
+
+                  if (!childFolder) {
+                    log.info(`Creating missing child folder: ${folderData.label} (${folderData.id})`);
+                    const folderInput: EntryInput = {
+                      client: this.client,
+                      id: folderData.id,
+                      label: folderData.label,
+                      parent: this,
+                    };
+                    childFolder = new TemplateFolder(folderInput);
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          log.error(`Failed to load stored folder structure: ${error}`);
+        }
+
+        // Top level template folder not renamable
         this.contextValueParams.isRenamable = false;
         this.contextValue = this.getContextValue();
 
-        //load in all the templates
-        log.info(`Loading templates for org ${this.id}`);
+        // Load in all the templates from API
+        log.info(`Loading templates for org ${this.orgId}`);
         const response = await this.client.sdk.listTemplatesMinimal({
           orgId: this.orgId,
         });
         const templates = response.templates;
-        log.info(`Found ${templates.length} templates for org ${this.id}`);
+        log.info(`Found ${templates.length} templates for org ${this.orgId}`);
 
         templates.forEach((template: { id: string; name: string }) => {
           const input: EntryInput = {

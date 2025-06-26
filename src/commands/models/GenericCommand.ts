@@ -2,14 +2,12 @@ import vscode from "vscode";
 import RewstFS from "@fs/RewstFS";
 import RewstView from "@fs/RewstView";
 import { log } from "@log";
-import Storage from "storage/Storage";
 
 export interface CommandContext {
   context: vscode.ExtensionContext;
   commandPrefix: string;
   fs: RewstFS;
   view: RewstView;
-  storage: Storage;
 }
 
 export default abstract class GenericCommand {

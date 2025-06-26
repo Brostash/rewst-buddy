@@ -1,7 +1,6 @@
 import { Template } from "./Template";
 import { Entry, ContextValueParams, RType, EntryInput } from "./Entry";
 import { TemplateFolder, SerializableTemplateFolder } from "./TemplateFolder";
-import Storage from "storage/Storage";
 import vscode from "vscode";
 import RewstFS from "@fs/RewstFS";
 import { log } from "@log";

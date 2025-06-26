@@ -1,4 +1,4 @@
-import Storage from "storage/Storage";
+import { storage } from "storage/Storage";
 import GenericCommand from "../models/GenericCommand";
 import { uuidv7 } from "uuidv7";
 import { log } from "@log";

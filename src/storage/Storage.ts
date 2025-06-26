@@ -6,44 +6,58 @@ import {
 import RewstClient from "client/RewstClient";
 import vscode from "vscode";
 
-export default class Storage {
-  key = "RewstOrgData";
+class Storage {
+  private context!: vscode.ExtensionContext;
+  private initialized = false;
+  public key = "RewstOrgData";
 
-  constructor(private context: vscode.ExtensionContext) { }
+  public init(context: vscode.ExtensionContext) {
+    this.context = context;
+    this.initialized = true;
+  }
+
+  private ensureInitialized() {
+    if (!this.initialized) {
+      throw new Error("Storage not initialized. Call storage.init(context) first.");
+    }
+  }
 
   static serializeMap(myMap: Map<string, string>): string {
-    throw new Error("not made yet");
     return JSON.stringify(Array.from(myMap.entries()));
   }
 
-  static deserializedMap(mapString: string): Map<string, string> {
+  static deserializeMap(mapString: string): Map<string, string> {
     return new Map(JSON.parse(mapString));
   }
 
   getAllOrgData(): Map<string, string> {
-    const mapString: string | undefined = this.context.globalState.get(
-      this.key
-    );
+    this.ensureInitialized();
+    const mapString: string | undefined = this.context.globalState.get(this.key);
     if (mapString && mapString !== "{}") {
-      return Storage.deserializedMap(mapString);
+      return Storage.deserializeMap(mapString);
     } else {
       return new Map<string, string>();
     }
   }
 
-  setRewstOrgData(org: Org): void {
-    throw new Error("not made yet");
+  setRewstOrgData(orgId: string, data: string): void {
+    this.ensureInitialized();
+    this.context.globalState.update(`${this.key}-${orgId}`, data);
   }
 
   getRewstOrgData(orgId: string): string {
-    throw new Error("not made yet");
+    this.ensureInitialized();
+    return this.context.globalState.get(`${this.key}-${orgId}`) || '{}';
   }
 
-  getAllOrgs(context: vscode.ExtensionContext): string[] {
-    throw new Error("not made yet");
+  getAllOrgs(): string[] {
+    this.ensureInitialized();
+    // Implementation when ready
+    throw new Error("getAllOrgs not implemented yet");
   }
 
   async upsertOrgVariable(client: RewstClient, value: string) {
+    this.ensureInitialized();
     const input: CreateOrgVariableMutationVariables = {
       orgVariable: {
         cascade: false,
@@ -57,5 +71,22 @@ export default class Storage {
     };
 
     const response = await client.sdk.createOrgVariable(input);
+    return response;
+  }
+
+  // Additional utility methods for storage management
+  clearOrgData(orgId: string): void {
+    this.ensureInitialized();
+    this.context.globalState.update(`${this.key}-${orgId}`, undefined);
+  }
+
+  getAllStoredOrgIds(): string[] {
+    this.ensureInitialized();
+    const keys = this.context.globalState.keys();
+    return keys
+      .filter(key => key.startsWith(`${this.key}-`))
+      .map(key => key.replace(`${this.key}-`, ''));
   }
 }
+
+export const storage = new Storage();

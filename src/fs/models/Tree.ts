@@ -2,7 +2,7 @@ import vscode from "vscode";
 import { Entry, EntryInput, RType } from "./Entry";
 import RewstFS from "../RewstFS";
 import path from "path";
-import { AlmostOrg, AlmostOrgInput } from "./Org";
+import { AlmostOrg, AlmostOrgInput, Org } from "./Org";
 import RewstClient from "client/RewstClient";
 import { log } from "@log";
 
@@ -234,6 +234,15 @@ export class Tree implements ITree<Entry> {
 
   getOrgs(): vscode.TreeItem[] {
     return [...this.orgs.values(), ...this.almostOrgs.values()];
+  }
+
+  lookupOrg(uri: vscode.Uri): Org {
+    const orgId = this.getOrgId(uri);
+    const org = this.orgs.get(orgId);
+    if (!(org instanceof Org)) {
+      throw new Error("Could not find org");
+    }
+    return org;
   }
 
   newOrg(org: Entry) {

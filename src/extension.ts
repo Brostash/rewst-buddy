@@ -6,7 +6,7 @@ import RewstView from "@fs/RewstView";
 import { CommandContext } from "@commands/models/GenericCommand";
 import CommandInitiater from "@commands/models/CommandInitiater";
 import { RewstClient } from "@client/index";
-import Storage from "storage/Storage";
+import { storage } from "storage/Storage";
 import { log } from "@log";
 
 // This method is called when your extension is activated
@@ -16,8 +16,8 @@ export async function activate(context: vscode.ExtensionContext) {
   // This line of code will only be executed once when your extension is activated
 
   log.init(context);
+  storage.init(context);
   log.info('Congratulations, your extension "rewst-buddy" is now active!');
-
 
   const view = new RewstView(context);
 
@@ -26,7 +26,6 @@ export async function activate(context: vscode.ExtensionContext) {
     context: context,
     view: view,
     fs: view.rewstfs,
-    storage: new Storage(context),
   };
 
 
