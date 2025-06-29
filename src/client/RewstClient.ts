@@ -1,218 +1,259 @@
-import vscode from "vscode";
-import { GraphQLClient } from "graphql-request";
-import { getSdk, Sdk, SdkFunctionWrapper } from "@sdk";
-import RewstProfile, { RewstProfiles } from "./models/RewstProfiles";
-import { log } from "@log";
-import { createRetryWrapper, createMockWrapper } from "./wrappers";
+import { context } from '@global';
+import { log } from '@log';
+import { getSdk, Sdk, SdkFunctionWrapper } from '@sdk';
+import { GraphQLClient } from 'graphql-request';
+import vscode from 'vscode';
+import { getRegionConfigs, RegionConfig } from './RegionConfig';
+import RewstProfile, { RewstProfiles } from './RewstProfiles';
+import { createMockWrapper, createRetryWrapper } from './wrappers';
 
 function parseCookieString(cookieString: string): Record<string, string> {
-  const cookies: Record<string, string> = {};
-  cookieString.split(";").forEach((pair) => {
-    const [key, value] = pair.trim().split("=");
-    cookies[key] = value;
-  });
-  return cookies;
+	const cookies: Record<string, string> = {};
+
+	cookieString.split(';').forEach(pair => {
+		const trimmedPair = pair.trim();
+		const [key, value] = trimmedPair.split('=');
+
+		if (key && value) {
+			cookies[key] = value;
+		}
+	});
+
+	return cookies;
 }
 
 export default class RewstClient {
-  private static readonly endpoint = "https://api.rewst.io/graphql";
-  private context: vscode.ExtensionContext;
-  private secrets: vscode.SecretStorage;
+	private secrets: vscode.SecretStorage;
 
-  private constructor(
-    context: vscode.ExtensionContext,
-    public sdk: Sdk,
-    public orgId: string,
-    public label: string
-  ) {
-    this.context = context;
-    this.secrets = context.secrets;
-    this.saveProfile();
-  }
+	private constructor(
+		context: vscode.ExtensionContext,
+		public sdk: Sdk,
+		public orgId: string,
+		public label: string,
+		public region: RegionConfig,
+	) {
+		this.secrets = context.secrets;
+		this.saveProfile();
+	}
 
-  static async create(
-    context: vscode.ExtensionContext,
-    orgId?: string,
-    token?: string
-  ) {
-    if (token === undefined) {
-      if (orgId === undefined) {
-        token = await RewstClient.promptToken();
-      } else {
-        token = await context.secrets.get(orgId);
-      }
-    }
+	static async create(context: vscode.ExtensionContext, orgId?: string, token?: string): Promise<RewstClient> {
+		// Guard clause: Get token if not provided
+		if (!token) {
+			token = await RewstClient.getTokenForCreation(context, orgId);
+		}
 
-    if (typeof token !== "string") {
-      throw new Error("Retrieved token somehow not string (Undefined)");
-    }
+		if (typeof token !== 'string') {
+			log.error('Retrieved token is not a string', true);
+			throw new Error('Invalid token format');
+		}
 
-    const sdk = RewstClient.newSdk(token);
+		const [sdk, regionConfig] = await RewstClient.newSdk(token);
 
-    if (!(await RewstClient.validateSdk(sdk))) {
-      throw new Error("Error creating sdk from token");
-    }
+		const response = await sdk.UserOrganization();
+		const org = response.userOrganization;
 
-    const reponse = await sdk.UserOrganization();
+		if (typeof org?.id !== 'string') {
+			log.error('Failed to retrieve organization ID from API', true);
+			throw new Error('Invalid organization data');
+		}
 
-    const org = reponse.userOrganization;
+		await context.secrets.store(org.id, token);
+		const client = new RewstClient(context, sdk, org.id, org.name, regionConfig);
 
-    if (typeof org?.id !== "string") {
-      throw new Error("Error getting orgId using token");
-    }
+		await client.refreshToken();
 
-    await context.secrets.store(org.id, token);
+		return client;
+	}
 
-    const client = new RewstClient(context, sdk, org.id, org.name);
+	private static async getTokenForCreation(context: vscode.ExtensionContext, orgId?: string): Promise<string> {
+		if (!orgId) {
+			return await RewstClient.promptToken();
+		}
 
-    client.refreshToken();
+		const token = await context.secrets.get(orgId);
+		if (!token) {
+			log.error(`No stored token found for orgId: ${orgId}`, true);
+			throw new Error('No stored token available');
+		}
 
-    return client;
-  }
+		return token;
+	}
 
-  static async LoadClients(
-    context: vscode.ExtensionContext
-  ): Promise<RewstClient[]> {
-    const profileObj = RewstClient.getSavedProfiles(context);
-    const profiles = Object.values(profileObj);
+	static async LoadClients(context: vscode.ExtensionContext): Promise<RewstClient[]> {
+		const profileObj = RewstClient.getSavedProfiles(context);
+		const profiles = Object.values(profileObj);
 
-    const resultsPromises = profiles.map(async (profile) => {
-      try {
-        return await RewstClient.create(context, profile.orgId);
-      } catch (err) {
-        log.info(
-          `Failed to make client for ${profile.orgId} with eror: ${err}`
-        );
-        return undefined;
-      }
-    });
+		const resultsPromises = profiles.map(async profile => {
+			try {
+				return await RewstClient.create(context, profile.orgId);
+			} catch (err) {
+				log.error(`Failed to create client for ${profile.orgId}: ${err}`, false);
+				return undefined;
+			}
+		});
 
-    const results = await Promise.all(resultsPromises);
+		const results = await Promise.all(resultsPromises);
 
-    log.info(`loaded clients: ${results}`);
+		const clients = results.filter((c): c is RewstClient => c !== undefined);
+		log.info(`Successfully loaded ${clients.length} clients`);
 
-    const clients = results.filter((c) => c !== undefined);
-    return clients;
-  }
+		return clients;
+	}
 
-  private saveProfile() {
-    const profiles = this.getSavedProfiles();
-    profiles[this.orgId] = this.getProfile();
-    this.context.globalState.update("RewstProfiles", profiles);
-  }
+	private saveProfile() {
+		const profiles = this.getSavedProfiles();
+		profiles[this.orgId] = this.getProfile();
+		context.globalState.update('RewstProfiles', profiles);
+	}
 
-  private static getSavedProfiles(
-    context: vscode.ExtensionContext
-  ): RewstProfiles {
-    return context.globalState.get<RewstProfiles>("RewstProfiles") ?? {};
-  }
+	private static getSavedProfiles(context: vscode.ExtensionContext): RewstProfiles {
+		return context.globalState.get<RewstProfiles>('RewstProfiles') ?? {};
+	}
 
-  public static clearProfiles(context: vscode.ExtensionContext) {
-    context.globalState.update("RewstProfiles", {});
-  }
+	public static clearProfiles(context: vscode.ExtensionContext) {
+		context.globalState.update('RewstProfiles', {});
+	}
 
-  private getSavedProfiles(): RewstProfiles {
-    return RewstClient.getSavedProfiles(this.context);
-  }
+	private getSavedProfiles(): RewstProfiles {
+		return RewstClient.getSavedProfiles(context);
+	}
 
-  private getProfile(): RewstProfile {
-    return { orgId: this.orgId, loaded: false, label: this.label };
-  }
+	private getProfile(): RewstProfile {
+		return { orgId: this.orgId, loaded: false, label: this.label };
+	}
 
-  private static newSdk(token: string): Sdk {
-    const client = new GraphQLClient(RewstClient.endpoint, {
-      errorPolicy: "all",
-      method: "POST",
-      headers: () => ({
-        cookie: `appSession=${token}`,
-      }),
-    });
+	private static newSdkAtRegion(token: string, config: RegionConfig): Sdk {
+		const client = new GraphQLClient(config.graphqlUrl, {
+			errorPolicy: 'all',
+			method: 'POST',
+			headers: () => ({
+				cookie: `${config.cookieName}=${token}`,
+			}),
+		});
 
-    // Determine wrapper based on environment/flags
-    const wrapper = RewstClient.getWrapper();
-    const sdk = getSdk(client, wrapper);
-    return sdk;
-  }
+		// Determine wrapper based on environment/flags
+		const wrapper = RewstClient.getWrapper();
+		const sdk = getSdk(client, wrapper);
+		return sdk;
+	}
 
-  private static getWrapper(): SdkFunctionWrapper | undefined {
-    // Check for test/mock environment
-    if (process.env.NODE_ENV === "test" || process.env.REWST_MOCK === "true") {
-      return createMockWrapper();
-    }
+	private static async newSdk(token: string): Promise<[Sdk, RegionConfig]> {
+		const configs = getRegionConfigs();
+		let sdk;
+		let myConfig;
+		for (const config of configs) {
+			try {
+				sdk = RewstClient.newSdkAtRegion(token, config);
+				if (!(await RewstClient.validateSdk(sdk))) {
+					log.error('SDK validation failed with provided token');
+					throw new Error('Invalid SDK configuration');
+				}
+				myConfig = config;
+				break;
+			} catch {
+				continue;
+			}
+		}
+		if (!sdk) {
+			log.error('Could not initialize client with any known region');
+			throw new Error('');
+		}
 
-    // Default to retry wrapper for production
-    return createRetryWrapper();
-  }
+		if (!myConfig) {
+			log.error('Could not initialize client with any known region');
+			throw new Error('');
+		}
+		return [sdk, myConfig];
+	}
 
-  private static async validateSdk(sdk: Sdk): Promise<boolean> {
-    const response = await sdk.UserOrganization();
+	private static getWrapper(): SdkFunctionWrapper | undefined {
+		// Check for test/mock environment
+		if (process.env.NODE_ENV === 'test' || process.env.REWST_MOCK === 'true') {
+			return createMockWrapper();
+		}
 
-    if (typeof response.userOrganization?.id !== "string") {
-      return false;
-    }
+		// Default to retry wrapper for production
+		return createRetryWrapper();
+	}
 
-    return true;
-  }
+	private static async validateSdk(sdk: Sdk): Promise<boolean> {
+		try {
+			const response = await sdk.UserOrganization();
+			return typeof response.userOrganization?.id === 'string';
+		} catch (error) {
+			log.error(`SDK validation failed: ${error}`, true);
+			return false;
+		}
+	}
 
-  private static async promptToken(): Promise<string> {
-    const token = await vscode.window.showInputBox({
-      placeHolder: "Enter your token",
-      prompt: "We need your token to proceed",
-      password: true,
-    });
+	private static async promptToken(): Promise<string> {
+		const token = await vscode.window.showInputBox({
+			placeHolder: 'Enter your token',
+			prompt: 'We need your token to proceed',
+			password: true,
+		});
 
-    return token ?? "";
-  }
+		return token ?? '';
+	}
 
-  private async refreshToken() {
-    const oldToken = await this.getToken();
+	private async refreshToken() {
+		const config = this.region;
+		try {
+			const oldToken = await this.getToken();
 
-    const response = await fetch("https://app.rewst.io", {
-      method: "GET",
-      headers: {
-        cookie: `appSession=${oldToken}`,
-      },
-    });
+			const response = await fetch(config.loginUrl, {
+				method: 'GET',
+				headers: {
+					cookie: `${config.cookieName}=${oldToken}`,
+				},
+			});
 
-    const headers = response.headers;
+			if (!response.ok) {
+				log.error(`Token refresh request failed with status: ${response.status}`, true);
+				throw new Error(`HTTP ${response.status}: Token refresh failed`);
+			}
 
-    const cookieString = headers.get("set-cookie");
+			const cookieString = response.headers.get('set-cookie');
+			if (!cookieString) {
+				log.error('Token refresh response missing set-cookie header', true);
+				throw new Error('Authentication response missing cookies');
+			}
 
-    if (cookieString === null) {
-      throw new Error("Auth reponse didn't give back cookies");
-    }
+			const cookies = parseCookieString(cookieString);
+			const appSession = cookies[config.cookieName];
 
-    const cookies = parseCookieString(cookieString);
+			if (typeof appSession !== 'string') {
+				log.error('New session token not found in response cookies', true);
+				throw new Error('Invalid session token format');
+			}
 
-    const appSession = cookies["appSession"];
+			const sdk = RewstClient.newSdkAtRegion(appSession, config);
+			if (!(await RewstClient.validateSdk(sdk))) {
+				log.error('Refreshed token failed SDK validation', true);
+				throw new Error('Refreshed token validation failed');
+			}
 
-    if (typeof appSession !== "string") {
-      throw new Error("AppSession was not a string, didn't refresh");
-    }
-    const sdk = RewstClient.newSdk(appSession);
+			await this.secrets.store(this.orgId, appSession);
+			this.sdk = sdk;
+			log.info(`Successfully refreshed token for ${this.orgId}`);
+		} catch (error) {
+			log.error(`Token refresh failed for ${this.orgId}: ${error}`, true);
+			throw error;
+		}
+	}
 
-    if (!(await RewstClient.validateSdk(sdk))) {
-      throw new Error("Error creating sdk from token");
-    }
+	private static async getToken(context: vscode.ExtensionContext, orgId: string): Promise<string> {
+		const token = await context.secrets.get(orgId);
 
-    await this.secrets.store(this.orgId, appSession);
+		if (typeof token !== 'string') {
+			log.error(`Failed to retrieve token for orgId: ${orgId}`, true);
+			throw new Error(`No valid token found for organization: ${orgId}`);
+		}
 
-    this.sdk = sdk;
-    log.info(`Refreshed token and sdk for ${this.orgId}`);
-  }
+		return token;
+	}
 
-  private static async getToken(
-    context: vscode.ExtensionContext,
-    orgId: string
-  ): Promise<string> {
-    const token = await context.secrets.get(orgId);
-    if (typeof token !== "string") {
-      throw new Error(`Failed to grab token for orgId ${orgId}`);
-    }
-    return token;
-  }
-
-  async getToken(): Promise<string> {
-    return await RewstClient.getToken(this.context, this.orgId);
-  }
+	async getToken(): Promise<string> {
+		return await RewstClient.getToken(context, this.orgId);
+	}
 }

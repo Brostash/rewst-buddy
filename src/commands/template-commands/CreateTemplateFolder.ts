@@ -1,132 +1,146 @@
-import RewstClient from "client/RewstClient";
-import GenericCommand from "../models/GenericCommand";
-import vscode from "vscode";
-import {
-  createTemplateFolder,
-  TemplateFolder,
-  EntryInput,
-  LabelValidationResult
-} from "@fs/models";
 import { log } from '@log';
+import { TemplateFolder } from '@models';
+import { CommandOperations, CommandValidator } from '@utils';
+import vscode from 'vscode';
+import GenericCommand from '../GenericCommand';
 
 export class CreateTemplateFolder extends GenericCommand {
-  commandName = "CreateTemplateFolder";
+	commandName = 'CreateTemplateFolder';
 
-  private validationTimeout: NodeJS.Timeout | undefined;
+	private validationTimeout: NodeJS.Timeout | undefined;
 
-  async execute(...args: any): Promise<void> {
-    log.info('CreateTemplateFolder command started');
-    try {
-      const entry = args[0][0] ?? undefined;
-      log.info(`Creating template folder in: ${entry?.label || 'unknown'} (${entry?.id || 'unknown'})`);
+	async execute(...args: unknown[]): Promise<void> {
+		log.info(`${this.commandName} command started`);
 
-      if (!(entry instanceof TemplateFolder)) {
-        const message = "Cannot create folder in something that is not a folder";
-        log.error(`CreateTemplateFolder failed: ${message}`);
-        vscode.window.showErrorMessage(message);
-        throw new Error(message);
-      }
+		try {
+			const parentFolder = CommandValidator.validateAndExtract<TemplateFolder>(
+				args,
+				TemplateFolder,
+				this.commandName,
+				'folder',
+			);
 
-      // Get existing sibling folder names for validation
-      await entry.initialize(); // Ensure children are loaded
-      const siblingFolderNames = entry.children
-        .filter(child => child instanceof TemplateFolder)
-        .map(folder => folder.label);
+			const siblingFolderNames = await this.getSiblingFolderNames(parentFolder);
+			const label = await this.showValidatedInputBox(parentFolder, siblingFolderNames);
 
-      log.info(`Found ${siblingFolderNames.length} existing sibling folders for validation`);
+			if (!label) {
+				log.info(`${this.commandName}: No label provided, exiting folder creation`);
+				return;
+			}
 
-      // Show input box with real-time validation
-      const label = await this.showValidatedInputBox(entry, siblingFolderNames);
+			const folder = await this.createFolder(parentFolder, label);
+			await CommandOperations.refreshUI(parentFolder, this.commandName);
 
-      if (!label) {
-        log.info("No label provided, exiting Folder Creation");
-        return;
-      }
+			log.info(`${this.commandName} command completed successfully`);
+		} catch (error) {
+			log.error(`${this.commandName} command failed: ${error}`, true);
+			throw new Error(`Failed to create template folder: ${error}`);
+		}
+	}
 
-      log.info(`Creating template folder with name: ${label}`);
-      const folder = await createTemplateFolder(entry, label);
-      log.info(`Successfully created template folder: ${folder.label} (${folder.id})`);
+	private async getSiblingFolderNames(parentFolder: TemplateFolder): Promise<string[]> {
+		await parentFolder.initialize();
+		const siblingFolderNames = parentFolder.children
+			.filter(child => child instanceof TemplateFolder)
+			.map(folder => folder.label);
 
-      log.info('Refreshing view after folder creation');
-      vscode.commands.executeCommand("rewst-buddy.RefreshView", folder);
-      vscode.commands.executeCommand("rewst-buddy.SaveFolderStructure", folder);
+		log.info(`${this.commandName}: Found ${siblingFolderNames.length} existing sibling folders for validation`);
+		return siblingFolderNames;
+	}
 
+	private async createFolder(parentFolder: TemplateFolder, label: string): Promise<TemplateFolder> {
+		log.info(`${this.commandName}: Creating template folder with name: ${label}`);
+		const folder = await TemplateFolder.createFolder(parentFolder, label);
 
-      log.info('CreateTemplateFolder command completed successfully');
-    } catch (error) {
-      log.error(`CreateTemplateFolder command failed: ${error}`);
-      throw error;
-    }
-  }
+		if (!folder) {
+			log.error(`${this.commandName}: Failed to create folder - null result`, true);
+			throw new Error('Folder creation failed');
+		}
 
-  private async showValidatedInputBox(
-    parentFolder: TemplateFolder,
-    forbiddenLabels: string[]
-  ): Promise<string | undefined> {
-    return new Promise((resolve) => {
-      const inputBox = vscode.window.createInputBox();
-      inputBox.title = 'Create Template Folder';
-      inputBox.placeholder = 'Folder Name';
-      inputBox.prompt = 'Enter a name for the template folder';
+		log.info(`${this.commandName}: Successfully created template folder: ${folder.label} (${folder.id})`);
+		return folder;
+	}
 
-      let isValid = false;
-      let currentValue = '';
+	private async showValidatedInputBox(
+		parentFolder: TemplateFolder,
+		forbiddenLabels: string[],
+	): Promise<string | undefined> {
+		return new Promise(resolve => {
+			const inputBox = this.createInputBox();
+			const isValid = false;
+			const currentValue = '';
 
-      // Handle input validation with debouncing
-      const validateInput = (value: string) => {
-        // Clear existing timeout
-        if (this.validationTimeout) {
-          clearTimeout(this.validationTimeout);
-        }
+			const validateInput = this.createValidationFunction(parentFolder, forbiddenLabels, inputBox);
 
-        // Set new timeout for debounced validation
-        this.validationTimeout = setTimeout(() => {
-          const validationResult = parentFolder.isValidLabel(value, forbiddenLabels);
+			this.setupInputBoxHandlers(inputBox, validateInput, resolve, isValid, currentValue);
 
-          if (!validationResult.isValid) {
-            inputBox.validationMessage = validationResult.error || 'Invalid folder name';
-            isValid = false;
-            log.info(`Validation failed for "${value}": ${validationResult.error}`);
-          } else {
-            inputBox.validationMessage = '';
-            isValid = true;
-            log.info(`Validation passed for "${value}"`);
-          }
-        }, 300); // 300ms debounce delay
-      };
+			validateInput('');
+			inputBox.show();
+		});
+	}
 
-      // Handle input changes
-      inputBox.onDidChangeValue((value) => {
-        currentValue = value;
-        validateInput(value);
-      });
+	private createInputBox(): vscode.InputBox {
+		const inputBox = vscode.window.createInputBox();
+		inputBox.title = 'Create Template Folder';
+		inputBox.placeholder = 'Folder Name';
+		inputBox.prompt = 'Enter a name for the template folder';
+		return inputBox;
+	}
 
-      // Handle submission
-      inputBox.onDidAccept(() => {
-        if (isValid && currentValue.trim()) {
-          log.info(`Folder name "${currentValue.trim()}" accepted`);
-          inputBox.hide();
-          resolve(currentValue.trim());
-        } else {
-          // Prevent submission if invalid
-          log.info(`Folder name "${currentValue}" rejected - validation failed`);
-        }
-      });
+	private createValidationFunction(
+		parentFolder: TemplateFolder,
+		forbiddenLabels: string[],
+		inputBox: vscode.InputBox,
+	): (value: string) => void {
+		return (value: string) => {
+			if (this.validationTimeout) {
+				clearTimeout(this.validationTimeout);
+			}
 
-      // Handle cancellation
-      inputBox.onDidHide(() => {
-        if (this.validationTimeout) {
-          clearTimeout(this.validationTimeout);
-        }
-        resolve(undefined);
-      });
+			this.validationTimeout = setTimeout(() => {
+				const validationResult = parentFolder.isValidLabel(value, forbiddenLabels);
+				this.updateValidationState(inputBox, validationResult, value);
+			}, 300);
+		};
+	}
 
-      // Initial validation for empty input
-      validateInput('');
+	private updateValidationState(inputBox: vscode.InputBox, validationResult: any, value: string): void {
+		if (!validationResult.isValid) {
+			inputBox.validationMessage = validationResult.error || 'Invalid folder name';
+			log.info(`${this.commandName}: Validation failed for "${value}": ${validationResult.error}`);
+		} else {
+			inputBox.validationMessage = '';
+			log.info(`${this.commandName}: Validation passed for "${value}"`);
+		}
+	}
 
-      inputBox.show();
-    });
+	private setupInputBoxHandlers(
+		inputBox: vscode.InputBox,
+		validateInput: (value: string) => void,
+		resolve: (value: string | undefined) => void,
+		_isValid: boolean,
+		currentValue: string,
+	): void {
+		inputBox.onDidChangeValue(value => {
+			currentValue = value;
+			validateInput(value);
+		});
 
-  }
+		inputBox.onDidAccept(() => {
+			if (inputBox.validationMessage === '' && currentValue.trim()) {
+				log.info(`${this.commandName}: Folder name "${currentValue.trim()}" accepted`);
+				inputBox.hide();
+				resolve(currentValue.trim());
+			} else {
+				log.info(`${this.commandName}: Folder name "${currentValue}" rejected - validation failed`);
+			}
+		});
 
+		inputBox.onDidHide(() => {
+			if (this.validationTimeout) {
+				clearTimeout(this.validationTimeout);
+			}
+			resolve(undefined);
+		});
+	}
 }

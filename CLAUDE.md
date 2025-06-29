@@ -4,7 +4,7 @@ You are a helpful typescript/node development assistant. You will adhere to guid
 
 ## Project Overview
 
-VS Code extension for Rewst automation platform integration. Provides advanced template/script editing capabilities with direct Rewst instance connectivity via session cookies. Unofficial community tool (v0.5.0) with GraphQL API integration.
+VS Code extension for Rewst automation platform integration. Provides advanced template/script editing capabilities with direct Rewst instance connectivity via session cookies. Supports multi-region configuration for global instances. Unofficial community tool (v0.9.0) with GraphQL API integration.
 
 ## Architecture
 
@@ -12,7 +12,9 @@ VS Code extension for Rewst automation platform integration. Provides advanced t
 - **Client layer** (`src/client/`) - Rewst API communication via GraphQL
 - **File system layer** (`src/fs/`) - Virtual filesystem for Rewst resources
 - **Commands** (`src/commands/`) - Organized by functionality (client, storage, template, view)
-- **Models** - Data structures for organizations, templates, folders
+- **Models** (`src/models/`) - Data structures for organizations, templates, folders (reorganized from fs layer)
+- **Global Context** (`src/global-context/`) - Centralized context management for better performance
+- **Utilities** (`src/utils/`) - Command operations, validators, and tab management helpers
 
 ## Key Files & Directories
 
@@ -22,6 +24,9 @@ VS Code extension for Rewst automation platform integration. Provides advanced t
 - `src/client/graphql/` - GraphQL query definitions
 - `src/fs/RewstFS.ts` - Virtual filesystem implementation
 - `src/commands/` - Command implementations organized by category
+- `src/models/` - Data structures (Entry, Org, Template, TemplateFolder, Tree)
+- `src/global-context/` - Global context management system
+- `src/utils/` - Utility functions for commands, validation, and tab management
 
 ## Rewst Structures
 
@@ -76,7 +81,7 @@ npm run watch:webpack  # Webpack watch only
 
 ## Development Info
 
-- We are using these dev dependencies
+- We are using these dev dependencies (updated for v0.9.0, using webpack only)
   - "@0no-co/graphqlsp": "^1.12.16"
   - "@eslint/js": "^9.28.0"
   - "@graphql-codegen/cli": "^5.0.6"
@@ -95,10 +100,14 @@ npm run watch:webpack  # Webpack watch only
   - "@vscode/test-cli": "^0.0.10"
   - "@vscode/test-electron": "^2.5.2"
   - "eslint": "^9.28.0"
+  - "eslint-config-prettier": "^10.1.5"
+  - "eslint-import-resolver-typescript": "^4.4.4"
+  - "eslint-plugin-import": "^2.32.0"
   - "globals": "^16.2.0"
   - "graphql": "^16.11.0"
   - "graphql-request": "^7.1.2"
   - "npm-run-all": "^4.1.5"
+  - "prettier": "^3.6.2"
   - "ts-loader": "^9.5.2"
   - "typescript": "^5.8.3"
   - "typescript-eslint": "^8.33.0"
@@ -114,18 +123,19 @@ npm run watch:webpack  # Webpack watch only
 
 ## Security Context
 
-- **Cookie-based authentication** using `appSession` cookie
+- **Cookie-based authentication** using configurable session cookie names
+- **Multi-region support** with customizable endpoints
 - **Unofficial tool** - not affiliated with Rewst LLC
 - Sessions expire after 24 hours of inactivity
 - Inherits user's current Rewst permissions
 
 ## Current Status & Limitations
 
-- Version 0.5.0 with known limitations
-- No external change detection (requires manual refresh)
-- Limited error handling
-- Delete functionality disabled
-- NA Rewst instances only (others on request)
+- Version 0.9.0 with enhanced template management and improved architecture
+- No external template detection (requires manual refresh for templates created outside VS Code)
+- Template-focused: No workflow management capabilities
+- Session management requires manual cookie refresh after 24-hour expiry
+- Multi-region support via VS Code settings configuration
 
 ## VS Code Integration
 
@@ -137,9 +147,18 @@ npm run watch:webpack  # Webpack watch only
 
 ## Features and Context
 
-This is intended to help my as a consultant and as such takes a multi-tenanted approach. Each client is associated with a Rewst instance, and should be completely independent. However they are all managable in the sideview.
+This is intended to help as a consultant and as such takes a multi-tenanted approach. Each client is associated with a Rewst instance, and should be completely independent. However they are all manageable in the sideview.
 
-- Allows templates to be viewed, opened, edited, and saved. With save operations starting graphql operations to update the template by getting the appropriate id and rewst client.
-- Allows templates to be organized into user created folders. Folder structure is rewst instance/org specific, and should persist between reloads of vscode.
-- Folder structure should be loaded when an org is loaded
-- Eventually folder structure should be stored in an org var so that it can be shared amongst different developers from a single company
+### Current Capabilities (v0.9.0)
+- **Template Management**: Full CRUD operations - view, create, edit, delete, and save templates with GraphQL operations
+- **Enhanced Drag & Drop**: Improved validation and success tracking for template/folder operations with comprehensive error handling
+- **Folder Organization**: User-created hierarchical folder structures that are Rewst instance/org specific and persist between VS Code sessions
+- **Cloud Synchronization**: Folder structures are stored in Rewst org variables and shared across team members (enabled by default)
+- **Background Sync**: Automatic cloud update detection with conflict resolution
+- **Multi-Instance Support**: Manage multiple Rewst instances simultaneously as independent clients
+- **Global Context Management**: Centralized context, filesystem, and view management for better performance
+- **File Type Management**: Support for PowerShell, HTML, YAML, and custom file extensions
+- **Regional Configuration**: Support for different Rewst regions via VS Code settings
+- **Team Collaboration**: Shared folder structures with version-based conflict detection
+- **Comprehensive Logging**: Configurable logging system with file rotation
+- **Code Quality**: Standardized ESLint/Prettier configuration for consistent development workflow

@@ -5,10 +5,7 @@
 	"tasks": [
 		{
 			"label": "watch",
-			"dependsOn": [
-				"npm: watch:tsc",
-				"npm: watch:webpack"
-			],
+			"dependsOn": ["npm: watch:tsc", "npm: watch:webpack"],
 			"presentation": {
 				"reveal": "never"
 			},

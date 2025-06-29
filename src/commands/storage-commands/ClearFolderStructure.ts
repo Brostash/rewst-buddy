@@ -1,106 +1,125 @@
-import GenericCommand from "../models/GenericCommand";
-import vscode from "vscode";
-import { log } from "@log";
-import { storage } from "storage/Storage";
+import { log } from '@log';
+import { storage } from '@storage';
+import vscode from 'vscode';
+import GenericCommand from '../GenericCommand';
 
 export class ClearFolderStructure extends GenericCommand {
-    commandName = "ClearFolderStructure";
+	commandName = 'ClearFolderStructure';
 
-    async execute(...args: any): Promise<unknown> {
-        log.info('ClearFolderStructure command started');
-        try {
-            // Get all stored org IDs
-            const storedOrgIds = storage.getAllStoredOrgIds();
+	async execute(...args: unknown[]): Promise<boolean> {
+		const contextName = 'ClearFolderStructure';
+		log.info(`${contextName} command started`);
 
-            if (storedOrgIds.length === 0) {
-                vscode.window.showInformationMessage('No stored organization data found.');
-                return;
-            }
+		try {
+			const storedOrgIds = storage.getAllStoredOrgIds();
+			if (storedOrgIds.length === 0) {
+				vscode.window.showInformationMessage('No stored organization data found.');
+				return false;
+			}
 
-            // Create quick pick items with org info
-            const orgPickItems: vscode.QuickPickItem[] = [];
+			const orgPickItems = this.createOrgPickItems(storedOrgIds, contextName);
+			const selectedOrg = await this.showOrgSelection(orgPickItems, contextName);
+			if (!selectedOrg) {
+				return false;
+			}
 
-            for (const orgId of storedOrgIds) {
-                try {
-                    const orgData = storage.getRewstOrgData(orgId);
-                    const parsedData = JSON.parse(orgData || '{}');
+			const confirmed = await this.confirmDeletion(selectedOrg.detail!, contextName);
+			if (!confirmed) {
+				return false;
+			}
 
-                    const label = `Org: ${parsedData.orgLabel}`;
-                    let description = 'No folder structure data';
+			await this.clearFolderStructure(selectedOrg.detail!, contextName);
+			return true;
+		} catch (error) {
+			log.error(`${contextName} command failed: ${error}`, true);
+			throw new Error(`Clear folder structure failed: ${error}`);
+		}
+	}
 
-                    if (parsedData.templateFolderStructure) {
-                        const folderCount = parsedData.templateFolderStructure.folders?.length || 0;
-                        const templateCount = parsedData.templateFolderStructure.templatePlacements?.length || 0;
-                        description = `${folderCount} folders, ${templateCount} template placements`;
-                    }
+	private createOrgPickItems(storedOrgIds: string[], contextName: string): vscode.QuickPickItem[] {
+		const orgPickItems: vscode.QuickPickItem[] = [];
 
-                    orgPickItems.push({
-                        label,
-                        description,
-                        detail: orgId
-                    });
-                } catch (error) {
-                    log.error(`Failed to parse data for org ${orgId}: ${error}`);
-                    orgPickItems.push({
-                        label: `Org ID: ${orgId}`,
-                        description: 'Invalid data (corrupted)',
-                        detail: orgId
-                    });
-                }
-            }
+		for (const orgId of storedOrgIds) {
+			try {
+				const item = this.createOrgPickItem(orgId);
+				orgPickItems.push(item);
+			} catch (error) {
+				log.error(`${contextName}: Failed to parse data for org ${orgId}: ${error}`, true);
+				orgPickItems.push({
+					label: `Org ID: ${orgId}`,
+					description: 'Invalid data (corrupted)',
+					detail: orgId,
+				});
+			}
+		}
 
-            // Show org selection
-            const selectedOrg = await vscode.window.showQuickPick(orgPickItems, {
-                placeHolder: 'Select organization to clear folder structure',
-                title: 'Clear Folder Structure'
-            });
+		return orgPickItems;
+	}
 
-            if (!selectedOrg) {
-                log.info('User cancelled org selection');
-                return;
-            }
+	private createOrgPickItem(orgId: string): vscode.QuickPickItem {
+		const orgData = storage.getRewstOrgData(orgId);
+		const parsedData = JSON.parse(orgData || '{}');
 
-            const orgIdToClear = selectedOrg.detail!;
+		const label = `Org: ${parsedData.orgLabel || 'Unknown'}`;
+		let description = 'No folder structure data';
 
-            // Confirm deletion
-            const confirmation = await vscode.window.showWarningMessage(
-                `Are you sure you want to clear the folder structure for org "${orgIdToClear}"?\n\nThis action cannot be undone.`,
-                { modal: true },
-                'Clear Structure',
-                'Cancel'
-            );
+		if (parsedData.templateFolderStructure) {
+			const folderCount = parsedData.templateFolderStructure.folders?.length || 0;
+			const templateCount = parsedData.templateFolderStructure.templatePlacements?.length || 0;
+			description = `${folderCount} folders, ${templateCount} template placements`;
+		}
 
-            if (confirmation !== 'Clear Structure') {
-                log.info('User cancelled folder structure clearing');
-                return;
-            }
+		return { label, description, detail: orgId };
+	}
 
-            // Clear the folder structure
-            try {
-                const existingData = storage.getRewstOrgData(orgIdToClear);
-                const orgData = existingData !== '{}' ? JSON.parse(existingData) : {};
+	private async showOrgSelection(
+		orgPickItems: vscode.QuickPickItem[],
+		contextName: string,
+	): Promise<vscode.QuickPickItem | undefined> {
+		const selectedOrg = await vscode.window.showQuickPick(orgPickItems, {
+			placeHolder: 'Select organization to clear folder structure',
+			title: 'Clear Folder Structure',
+		});
 
-                // Remove the templateFolderStructure property
-                delete orgData.templateFolderStructure;
+		if (!selectedOrg) {
+			log.info(`${contextName}: User cancelled org selection`);
+			return undefined;
+		}
 
-                // Save the updated data (or empty object if no other data)
-                const updatedData = Object.keys(orgData).length > 0 ? JSON.stringify(orgData) : '{}';
-                storage.setRewstOrgData(orgIdToClear, updatedData);
+		return selectedOrg;
+	}
 
-                log.info(`Successfully cleared folder structure for org ${orgIdToClear}`);
-                vscode.window.showInformationMessage(`Folder structure cleared for org "${orgIdToClear}"`);
+	private async confirmDeletion(orgId: string, contextName: string): Promise<boolean> {
+		const confirmation = await vscode.window.showWarningMessage(
+			`Are you sure you want to clear the folder structure for org "${orgId}"?\n\nThis action cannot be undone.`,
+			{ modal: true },
+			'Clear Structure',
+		);
 
-            } catch (error) {
-                log.error(`Failed to clear folder structure for org ${orgIdToClear}: ${error}`);
-                vscode.window.showErrorMessage(`Failed to clear folder structure: ${error}`);
-                throw error;
-            }
+		if (confirmation !== 'Clear Structure') {
+			log.info(`${contextName}: User cancelled folder structure clearing`);
+			return false;
+		}
 
-            return true;
-        } catch (error) {
-            log.error(`ClearFolderStructure command failed: ${error}`);
-            vscode.window.showErrorMessage(`Clear folder structure failed: ${error}`);
-            throw error;
-        }
-    }
+		return true;
+	}
+
+	private async clearFolderStructure(orgId: string, contextName: string): Promise<void> {
+		try {
+			const existingData = storage.getRewstOrgData(orgId);
+			const orgData = existingData !== '{}' ? JSON.parse(existingData) : {};
+
+			delete orgData.templateFolderStructure;
+
+			const updatedData = Object.keys(orgData).length > 0 ? JSON.stringify(orgData) : '{}';
+			storage.setRewstOrgData(orgId, updatedData);
+
+			log.info(`${contextName}: Successfully cleared folder structure for org ${orgId}`);
+			vscode.window.showInformationMessage(`Folder structure cleared for org "${orgId}"`);
+		} catch (error) {
+			log.error(`${contextName}: Failed to clear folder structure for org ${orgId}: ${error}`, true);
+			vscode.window.showErrorMessage(`Failed to clear folder structure: ${error}`);
+			throw error;
+		}
+	}
 }

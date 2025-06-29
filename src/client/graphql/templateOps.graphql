@@ -1,63 +1,63 @@
-query listTemplatesMinimal($orgId : ID!) {
-    templates(where: { orgId: $orgId }) {
-        id
-        name
-        orgId
-        updatedAt
-    }
+query listTemplatesMinimal($orgId: ID!) {
+	templates(where: { orgId: $orgId }) {
+		id
+		name
+		orgId
+		updatedAt
+	}
 }
 
-mutation createTemplateMinimal($name : String!, $orgId : ID!) { 
-    template : createTemplate(template: { name : $name, orgId : $orgId, body : ""}) { 
-    id 
-    name 
-    description 
-    body 
-    contentType 
-    language 
-    cloneOverrides 
-    orgId
-    updatedAt
-  } 
-} 
-
-
+mutation createTemplateMinimal($name: String!, $orgId: ID!) {
+	template: createTemplate(template: { name: $name, orgId: $orgId, body: "" }) {
+		id
+		name
+		description
+		body
+		contentType
+		language
+		cloneOverrides
+		orgId
+		updatedAt
+	}
+}
 
 mutation updateTemplate($template: TemplateUpdateInput!) {
-  template: updateTemplate(template: $template) {
-    id
-    name
-    description
-    body
-    updatedAt
-    contentType
-    language
-    cloneOverrides
-    __typename
-  }
+	template: updateTemplate(template: $template) {
+		id
+		name
+		description
+		body
+		updatedAt
+		contentType
+		language
+		cloneOverrides
+		__typename
+	}
 }
 
-mutation UpdateTemplateBody($body: String, $id : ID!) {
-    updateTemplate( template: { body: $body, id: $id }) {
-        body
-        id
-        updatedAt
-    }
+mutation UpdateTemplateBody($body: String, $id: ID!) {
+	updateTemplate(template: { body: $body, id: $id }) {
+		body
+		id
+		updatedAt
+	}
 }
 
-mutation UpdateTemplateName($name: String, $id : ID!) {
-    updateTemplate( template: { name: $name, id: $id }) {
-        name
-        id
-        updatedAt
-    }
+mutation UpdateTemplateName($name: String, $id: ID!) {
+	updateTemplate(template: { name: $name, id: $id }) {
+		name
+		id
+		updatedAt
+	}
 }
-
 
 query getTemplateBody($id: ID!) {
-    template(where: { id: $id }) {
-        body
-        updatedAt
-    }
+	template(where: { id: $id }) {
+		body
+		updatedAt
+	}
 }
 
+mutation deleteTemplate($id: ID!) {
+	deleteTemplate(id: $id)
+}

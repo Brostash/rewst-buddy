@@ -1,120 +1,127 @@
-import RewstClient from "client/RewstClient";
-import GenericCommand from "../models/GenericCommand";
+import GenericCommand from '../GenericCommand';
 import * as vscode from 'vscode';
-import { Template } from "@fs/models";
-import { log } from "@log";
+import { Template } from '@models';
+import { log } from '@log';
+import { CommandValidator, CommandOperations } from '@utils';
 
-export class ChangeTemplateFiletypePowershell extends GenericCommand {
-    commandName = 'ChangeTemplateFiletypePowershell';
-    async execute(...args: any): Promise<void> {
-        log.info('ChangeTemplateFiletypePowershell command started');
-        try {
-            const entry = args[0][0] ?? undefined;
-            log.info(`Changing template filetype to PowerShell for: ${entry?.label || 'unknown'} (${entry?.id || 'unknown'})`);
+abstract class BaseTemplateFiletypeCommand extends GenericCommand {
+	protected abstract getFileExtension(): string;
+	protected abstract getFileTypeName(): string;
 
-            entry.ext = 'ps1';
-            log.info('Successfully changed template extension to ps1');
-            
-            vscode.commands.executeCommand('rewst-buddy.RefreshView', entry);
-            vscode.commands.executeCommand('rewst-buddy.SaveFolderStructure', entry);
-            
-            log.info('ChangeTemplateFiletypePowershell command completed');
-            return;
-        } catch (error) {
-            log.error(`ChangeTemplateFiletypePowershell command failed: ${error}`);
-            throw error;
-        }
-    }
+	async execute(...args: unknown[]): Promise<void> {
+		log.info(`${this.commandName} command started`);
+
+		try {
+			const template = CommandValidator.validateAndExtract<Template>(
+				args,
+				Template,
+				this.commandName,
+				'template',
+			);
+
+			await this.changeFileExtension(template);
+			await CommandOperations.refreshUI(template, this.commandName);
+
+			log.info(`${this.commandName} command completed successfully`);
+		} catch (error) {
+			log.error(`${this.commandName} command failed: ${error}`, true);
+			throw new Error(`Failed to change template filetype: ${error}`);
+		}
+	}
+
+	private async changeFileExtension(template: Template): Promise<void> {
+		const extension = this.getFileExtension();
+		const typeName = this.getFileTypeName();
+
+		log.info(
+			`${this.commandName}: Changing template filetype to ${typeName} for: ${template.label} (${template.id})`,
+		);
+
+		template.ext = extension;
+		log.info(`${this.commandName}: Successfully changed template extension to ${extension}`);
+	}
 }
 
-export class ChangeTemplateFiletypeHTML extends GenericCommand {
-    commandName = 'ChangeTemplateFiletypeHTML';
-    async execute(...args: any): Promise<void> {
-        log.info('ChangeTemplateFiletypeHTML command started');
-        try {
-            const entry = args[0][0] ?? undefined;
-            log.info(`Changing template filetype to HTML for: ${entry?.label || 'unknown'} (${entry?.id || 'unknown'})`);
+export class ChangeTemplateFiletypePowershell extends BaseTemplateFiletypeCommand {
+	commandName = 'ChangeTemplateFiletypePowershell';
 
-            entry.ext = 'html';
-            log.info('Successfully changed template extension to html');
-            
-            vscode.commands.executeCommand('rewst-buddy.RefreshView', entry);
-            vscode.commands.executeCommand('rewst-buddy.SaveFolderStructure', entry);
-            
-            log.info('ChangeTemplateFiletypeHTML command completed');
-            return;
-        } catch (error) {
-            log.error(`ChangeTemplateFiletypeHTML command failed: ${error}`);
-            throw error;
-        }
-    }
+	protected getFileExtension(): string {
+		return 'ps1';
+	}
+
+	protected getFileTypeName(): string {
+		return 'PowerShell';
+	}
 }
 
-export class ChangeTemplateFiletypeYAML extends GenericCommand {
-    commandName = 'ChangeTemplateFiletypeYAML';
-    async execute(...args: any): Promise<void> {
-        log.info('ChangeTemplateFiletypeYAML command started');
-        try {
-            const entry = args[0][0] ?? undefined;
-            log.info(`Changing template filetype to YAML for: ${entry?.label || 'unknown'} (${entry?.id || 'unknown'})`);
+export class ChangeTemplateFiletypeHTML extends BaseTemplateFiletypeCommand {
+	commandName = 'ChangeTemplateFiletypeHTML';
 
-            entry.ext = 'yml';
-            log.info('Successfully changed template extension to yml');
-            
-            vscode.commands.executeCommand('rewst-buddy.RefreshView', entry);
-            vscode.commands.executeCommand('rewst-buddy.SaveFolderStructure', entry);
-            
-            log.info('ChangeTemplateFiletypeYAML command completed');
-            return;
-        } catch (error) {
-            log.error(`ChangeTemplateFiletypeYAML command failed: ${error}`);
-            throw error;
-        }
-    }
+	protected getFileExtension(): string {
+		return 'html';
+	}
+
+	protected getFileTypeName(): string {
+		return 'HTML';
+	}
+}
+
+export class ChangeTemplateFiletypeYAML extends BaseTemplateFiletypeCommand {
+	commandName = 'ChangeTemplateFiletypeYAML';
+
+	protected getFileExtension(): string {
+		return 'yml';
+	}
+
+	protected getFileTypeName(): string {
+		return 'YAML';
+	}
 }
 
 export class ChangeTemplateFiletypeCustom extends GenericCommand {
-    commandName = 'ChangeTemplateFiletypeCustom';
-    async execute(...args: any): Promise<void> {
-        log.info('ChangeTemplateFiletypeCustom command started');
-        try {
-            const entry = args[0][0] ?? undefined;
-            log.info(`Custom template filetype change requested for: ${entry?.label || 'unknown'} (${entry?.id || 'unknown'})`);
+	commandName = 'ChangeTemplateFiletypeCustom';
 
-            if (!(entry instanceof Template)) {
-                log.error('Entry is not a Template instance, cannot change filetype');
-                return;
-            }
+	async execute(...args: unknown[]): Promise<void> {
+		log.info(`${this.commandName} command started`);
 
-            log.info('Prompting user for custom extension');
-            const ext = await vscode.window.showInputBox({
-                placeHolder: 'ps1',
-                prompt: 'Enter an extension (ex: html)',
-                validateInput: (input) => {
-                    return /^[a-zA-Z0-9 ]*$/.test(input)
-                        ? undefined
-                        : 'Please use alpha-numerics';
-                }
-            });
+		try {
+			const template = CommandValidator.validateAndExtract<Template>(
+				args,
+				Template,
+				this.commandName,
+				'template',
+			);
 
-            if (ext) {
-                log.info(`User provided custom extension: ${ext}`);
-                entry.ext = ext;
-                log.info(`Successfully changed template extension to: ${ext}`);
-            } else {
-                log.info('User cancelled custom extension input');
-            }
+			const extension = await this.promptForCustomExtension();
+			if (!extension) {
+				log.info(`${this.commandName}: User cancelled custom extension input`);
+				return;
+			}
 
-            vscode.commands.executeCommand('rewst-buddy.RefreshView', entry);
-            vscode.commands.executeCommand('rewst-buddy.SaveFolderStructure', entry);
+			await this.applyCustomExtension(template, extension);
+			await CommandOperations.refreshUI(template, this.commandName);
 
-            log.info('ChangeTemplateFiletypeCustom command completed');
-            return;
-        } catch (error) {
-            log.error(`ChangeTemplateFiletypeCustom command failed: ${error}`);
-            throw error;
-        }
-    }
+			log.info(`${this.commandName} command completed successfully`);
+		} catch (error) {
+			log.error(`${this.commandName} command failed: ${error}`, true);
+			throw new Error(`Failed to change template to custom filetype: ${error}`);
+		}
+	}
+
+	private async promptForCustomExtension(): Promise<string | undefined> {
+		log.info(`${this.commandName}: Prompting user for custom extension`);
+		return await vscode.window.showInputBox({
+			placeHolder: 'ps1',
+			prompt: 'Enter an extension (ex: html)',
+			validateInput: input => {
+				return /^[a-zA-Z0-9 ]*$/.test(input) ? undefined : 'Please use alpha-numerics';
+			},
+		});
+	}
+
+	private async applyCustomExtension(template: Template, extension: string): Promise<void> {
+		log.info(`${this.commandName}: User provided custom extension: ${extension} for template: ${template.label}`);
+		template.ext = extension;
+		log.info(`${this.commandName}: Successfully changed template extension to: ${extension}`);
+	}
 }
-
-

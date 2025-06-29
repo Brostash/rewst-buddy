@@ -1,5 +1,4 @@
+import CommandInitiater from './CommandInitiater';
+import { CommandContext, createCommand } from './GenericCommand';
 
-export * from './client-commands/index';
-export * from './view-commands/index';
-export * from './template-commands/index';
-export * from './storage-commands/index';
+export { CommandContext, CommandInitiater, createCommand };

@@ -1,12 +1,14 @@
-import { log } from "@log";
-import GenericCommand from "../models/GenericCommand";
+import { view } from '@global';
+import { log } from '@log';
+import GenericCommand from '../GenericCommand';
 
 export class RefreshView extends GenericCommand {
-  commandName = "RefreshView";
+	commandName = 'RefreshView';
 
-  async execute(): Promise<unknown> {
-    this.cmdContext.view.refresh();
-    log.info(`Refreshed View`, true);
-    return;
-  }
+	async execute(...args: any): Promise<unknown> {
+		const entry = args[0][0] ?? undefined;
+		view.refresh(entry);
+		log.info(`Refreshed View`, true);
+		return;
+	}
 }

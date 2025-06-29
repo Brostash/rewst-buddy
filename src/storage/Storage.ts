@@ -1,236 +1,217 @@
-import { Org } from "@fs/models";
-import {
-  CreateOrgVariableMutationVariables,
-  OrgVariableCategory,
-} from "graphql_sdk";
-import RewstClient from "client/RewstClient";
-import vscode from "vscode";
-import { log } from "@log";
+import { RewstClient } from '@client';
+import { context } from '@global';
+import { log } from '@log';
+import { CreateOrgVariableMutationVariables, OrgVariableCategory } from 'graphql_sdk';
+import vscode from 'vscode';
 
 class Storage {
-  private context!: vscode.ExtensionContext;
-  private initialized = false;
-  public key = "RewstOrgData";
+	private context!: vscode.ExtensionContext;
+	private initialized = false;
+	public key = 'RewstOrgData';
 
-  public init(context: vscode.ExtensionContext) {
-    this.context = context;
-    this.initialized = true;
-  }
+	static serializeMap(myMap: Map<string, string>): string {
+		return JSON.stringify(Array.from(myMap.entries()));
+	}
 
-  private ensureInitialized() {
-    if (!this.initialized) {
-      throw new Error("Storage not initialized. Call storage.init(context) first.");
-    }
-  }
+	static deserializeMap(mapString: string): Map<string, string> {
+		return new Map(JSON.parse(mapString));
+	}
 
-  static serializeMap(myMap: Map<string, string>): string {
-    return JSON.stringify(Array.from(myMap.entries()));
-  }
+	getAllOrgData(): Map<string, string> {
+		const mapString: string | undefined = context.globalState.get(this.key);
+		if (mapString && mapString !== '{}') {
+			return Storage.deserializeMap(mapString);
+		} else {
+			return new Map<string, string>();
+		}
+	}
 
-  static deserializeMap(mapString: string): Map<string, string> {
-    return new Map(JSON.parse(mapString));
-  }
+	setRewstOrgData(orgId: string, data: string): void {
+		context.globalState.update(`${this.key}-${orgId}`, data);
+	}
 
-  getAllOrgData(): Map<string, string> {
-    this.ensureInitialized();
-    const mapString: string | undefined = this.context.globalState.get(this.key);
-    if (mapString && mapString !== "{}") {
-      return Storage.deserializeMap(mapString);
-    } else {
-      return new Map<string, string>();
-    }
-  }
+	getRewstOrgData(orgId: string): string {
+		return context.globalState.get(`${this.key}-${orgId}`) || '{}';
+	}
 
-  setRewstOrgData(orgId: string, data: string): void {
-    this.ensureInitialized();
-    this.context.globalState.update(`${this.key}-${orgId}`, data);
-  }
+	getAllOrgs(): string[] {
+		// Implementation when ready
+		throw new Error('getAllOrgs not implemented yet');
+	}
+	async upsertOrgVariable(client: RewstClient, name: string, value: string) {
+		const input: CreateOrgVariableMutationVariables = {
+			orgVariable: {
+				cascade: false,
+				category: OrgVariableCategory.General,
+				id: undefined,
+				name: name,
+				orgId: client.orgId,
+				packConfigId: undefined,
+				value: value,
+			},
+		};
 
-  getRewstOrgData(orgId: string): string {
-    this.ensureInitialized();
-    return this.context.globalState.get(`${this.key}-${orgId}`) || '{}';
-  }
+		const response = await client.sdk.createOrgVariable(input);
+		return response;
+	}
 
-  getAllOrgs(): string[] {
-    this.ensureInitialized();
-    // Implementation when ready
-    throw new Error("getAllOrgs not implemented yet");
-  }
-  async upsertOrgVariable(client: RewstClient, name: string, value: string) {
-    this.ensureInitialized();
-    const input: CreateOrgVariableMutationVariables = {
-      orgVariable: {
-        cascade: false,
-        category: OrgVariableCategory.General,
-        id: undefined,
-        name: name,
-        orgId: client.orgId,
-        packConfigId: undefined,
-        value: value,
-      },
-    };
+	/**
+	 * Get an organization variable value by name
+	 */
+	async getOrgVariable(client: RewstClient, name: string): Promise<string | null> {
+		try {
+			const response = await client.sdk.getOrgVariable({
+				orgId: client.orgId,
+				name: name,
+			});
+			return response.orgVariable?.value || null;
+		} catch (error) {
+			return null;
+		}
+	}
 
-    const response = await client.sdk.createOrgVariable(input);
-    return response;
-  }
+	/**
+	 * Check if cloud sync is enabled for folder structure (local setting per org)
+	 */
+	isCloudSyncEnabled(client: RewstClient): boolean {
+		const key = `cloudSyncEnabled-${client.orgId}`;
+		return context.globalState.get(key, true);
+	}
 
-  /**
-   * Get an organization variable value by name
-   */
-  async getOrgVariable(client: RewstClient, name: string): Promise<string | null> {
-    try {
-      const response = await client.sdk.getOrgVariable({
-        orgId: client.orgId,
-        name: name
-      });
-      return response.orgVariable?.value || null;
-    } catch (error) {
-      return null;
-    }
-  }
+	/**
+	 * Set cloud sync setting for folder structure (local setting per org)
+	 */
+	setCloudSyncEnabled(client: RewstClient, enabled: boolean): void {
+		const key = `cloudSyncEnabled-${client.orgId}`;
+		context.globalState.update(key, enabled);
+	}
 
-  /**
-   * Check if cloud sync is enabled for folder structure (local setting per org)
-   */
-  isCloudSyncEnabled(client: RewstClient): boolean {
-    this.ensureInitialized();
-    const key = `cloudSyncEnabled-${client.orgId}`;
-    return this.context.globalState.get(key, false);
-  }
+	/**
+	 * Store last known cloud version for conflict detection
+	 */
+	setLastKnownCloudVersion(client: RewstClient, version: number): void {
+		const key = `lastKnownCloudVersion-${client.orgId}`;
+		context.globalState.update(key, version);
+	}
 
-  /**
-   * Set cloud sync setting for folder structure (local setting per org)
-   */
-  setCloudSyncEnabled(client: RewstClient, enabled: boolean): void {
-    this.ensureInitialized();
-    const key = `cloudSyncEnabled-${client.orgId}`;
-    this.context.globalState.update(key, enabled);
-  }
+	/**
+	 * Get last known cloud version for conflict detection
+	 */
+	getLastKnownCloudVersion(client: RewstClient): number {
+		const key = `lastKnownCloudVersion-${client.orgId}`;
+		return context.globalState.get(key, 0);
+	}
 
-  /**
-   * Store last known cloud version for conflict detection
-   */
-  setLastKnownCloudVersion(client: RewstClient, version: number): void {
-    this.ensureInitialized();
-    const key = `lastKnownCloudVersion-${client.orgId}`;
-    this.context.globalState.update(key, version);
-  }
+	/**
+	 * Save folder structure with conflict detection
+	 */
+	async saveFolderStructureWithConflictCheck(
+		client: RewstClient,
+		folderStructure: any,
+		expectedVersion: number,
+		author: string,
+	): Promise<{
+		success: boolean;
+		conflict?: boolean;
+		currentVersion?: number;
+	}> {
+		try {
+			// Check current cloud version
+			const currentCloudStructureJson = await this.getOrgVariable(client, 'rewst-buddy-folder-structure');
+			let currentVersion = 0;
 
-  /**
-   * Get last known cloud version for conflict detection
-   */
-  getLastKnownCloudVersion(client: RewstClient): number {
-    this.ensureInitialized();
-    const key = `lastKnownCloudVersion-${client.orgId}`;
-    return this.context.globalState.get(key, 0);
-  }
+			if (currentCloudStructureJson) {
+				try {
+					const currentCloudStructure = JSON.parse(currentCloudStructureJson);
+					currentVersion = currentCloudStructure.version || 0;
+				} catch (error) {
+					log.error(`Failed to parse current cloud structure for version check: ${error}`);
+				}
+			}
 
-  /**
-   * Save folder structure with conflict detection
-   */
-  async saveFolderStructureWithConflictCheck(
-    client: RewstClient,
-    folderStructure: any,
-    expectedVersion: number,
-    author: string
-  ): Promise<{ success: boolean; conflict?: boolean; currentVersion?: number }> {
-    try {
-      // Check current cloud version
-      const currentCloudStructureJson = await this.getOrgVariable(client, "rewst-buddy-folder-structure");
-      let currentVersion = 0;
+			// Check for conflicts
+			if (currentVersion > expectedVersion) {
+				return { success: false, conflict: true, currentVersion };
+			}
 
-      if (currentCloudStructureJson) {
-        try {
-          const currentCloudStructure = JSON.parse(currentCloudStructureJson);
-          currentVersion = currentCloudStructure.version || 0;
-        } catch (error) {
-          log.error(`Failed to parse current cloud structure for version check: ${error}`);
-        }
-      }
+			// No conflict - create versioned structure and save
+			const versionedStructure = {
+				...folderStructure,
+				version: currentVersion + 1,
+				author,
+				lastUpdated: new Date().toISOString(),
+			};
 
-      // Check for conflicts
-      if (currentVersion > expectedVersion) {
-        return { success: false, conflict: true, currentVersion };
-      }
+			await this.upsertOrgVariable(client, 'rewst-buddy-folder-structure', JSON.stringify(versionedStructure));
 
-      // No conflict - create versioned structure and save
-      const versionedStructure = {
-        ...folderStructure,
-        version: currentVersion + 1,
-        author,
-        lastUpdated: new Date().toISOString()
-      };
+			// Update our stored version
+			this.setLastKnownCloudVersion(client, versionedStructure.version);
 
-      await this.upsertOrgVariable(client, "rewst-buddy-folder-structure", JSON.stringify(versionedStructure));
+			return { success: true };
+		} catch (error) {
+			log.error(`Failed to save folder structure with conflict check: ${error}`);
+			throw error;
+		}
+	}
 
-      // Update our stored version
-      this.setLastKnownCloudVersion(client, versionedStructure.version);
+	/**
+	 * Check if cloud structure has been updated (for background monitoring)
+	 */
+	async checkForCloudUpdates(client: RewstClient): Promise<{
+		hasUpdates: boolean;
+		currentVersion?: number;
+		author?: string;
+	}> {
+		try {
+			if (!this.isCloudSyncEnabled(client)) {
+				return { hasUpdates: false };
+			}
 
-      return { success: true };
-    } catch (error) {
-      log.error(`Failed to save folder structure with conflict check: ${error}`);
-      throw error;
-    }
-  }
+			const cloudStructureJson = await this.getOrgVariable(client, 'rewst-buddy-folder-structure');
+			if (!cloudStructureJson) {
+				return { hasUpdates: false };
+			}
 
-  /**
-   * Check if cloud structure has been updated (for background monitoring)
-   */
-  async checkForCloudUpdates(client: RewstClient): Promise<{ hasUpdates: boolean; currentVersion?: number; author?: string }> {
-    try {
-      if (!this.isCloudSyncEnabled(client)) {
-        return { hasUpdates: false };
-      }
+			const cloudStructure = JSON.parse(cloudStructureJson);
+			const currentVersion = cloudStructure.version || 0;
+			const lastKnownVersion = this.getLastKnownCloudVersion(client);
 
-      const cloudStructureJson = await this.getOrgVariable(client, "rewst-buddy-folder-structure");
-      if (!cloudStructureJson) {
-        return { hasUpdates: false };
-      }
+			return {
+				hasUpdates: currentVersion > lastKnownVersion,
+				currentVersion,
+				author: cloudStructure.author,
+			};
+		} catch (error) {
+			log.error(`Failed to check for cloud updates: ${error}`);
+			return { hasUpdates: false };
+		}
+	}
 
-      const cloudStructure = JSON.parse(cloudStructureJson);
-      const currentVersion = cloudStructure.version || 0;
-      const lastKnownVersion = this.getLastKnownCloudVersion(client);
+	/**
+	 * Get current cloud folder structure
+	 */
+	async getCurrentCloudStructure(client: RewstClient): Promise<any | null> {
+		try {
+			const cloudStructureJson = await this.getOrgVariable(client, 'rewst-buddy-folder-structure');
+			if (!cloudStructureJson) {
+				return null;
+			}
+			return JSON.parse(cloudStructureJson);
+		} catch (error) {
+			log.error(`Failed to get current cloud structure: ${error}`);
+			return null;
+		}
+	}
 
-      return {
-        hasUpdates: currentVersion > lastKnownVersion,
-        currentVersion,
-        author: cloudStructure.author
-      };
-    } catch (error) {
-      log.error(`Failed to check for cloud updates: ${error}`);
-      return { hasUpdates: false };
-    }
-  }
+	// Additional utility methods for storage management
+	clearOrgData(orgId: string): void {
+		context.globalState.update(`${this.key}-${orgId}`, undefined);
+	}
 
-  /**
-   * Get current cloud folder structure
-   */
-  async getCurrentCloudStructure(client: RewstClient): Promise<any | null> {
-    try {
-      const cloudStructureJson = await this.getOrgVariable(client, "rewst-buddy-folder-structure");
-      if (!cloudStructureJson) {
-        return null;
-      }
-      return JSON.parse(cloudStructureJson);
-    } catch (error) {
-      log.error(`Failed to get current cloud structure: ${error}`);
-      return null;
-    }
-  }
-
-  // Additional utility methods for storage management
-  clearOrgData(orgId: string): void {
-    this.ensureInitialized();
-    this.context.globalState.update(`${this.key}-${orgId}`, undefined);
-  }
-
-  getAllStoredOrgIds(): string[] {
-    this.ensureInitialized();
-    const keys = this.context.globalState.keys();
-    return keys
-      .filter(key => key.startsWith(`${this.key}-`))
-      .map(key => key.replace(`${this.key}-`, ''));
-  }
+	getAllStoredOrgIds(): string[] {
+		const keys = context.globalState.keys();
+		return keys.filter(key => key.startsWith(`${this.key}-`)).map(key => key.replace(`${this.key}-`, ''));
+	}
 }
 
 export const storage = new Storage();

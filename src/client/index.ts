@@ -1,3 +1,3 @@
-import RewstClient from "./RewstClient";
+import RewstClient from './RewstClient';
 
 export { RewstClient };

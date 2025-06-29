@@ -1,56 +1,53 @@
-import GenericCommand from "../models/GenericCommand";
-import vscode from "vscode";
-import { log } from "@log";
-import { storage } from "storage/Storage";
-import { Org } from "@fs/models";
+import { log } from '@log';
+import { CloudOperations } from '@utils';
+import GenericCommand from '../GenericCommand';
 
 export class CheckForCloudUpdates extends GenericCommand {
-    commandName = "CheckForCloudUpdates";
+	commandName = 'CheckForCloudUpdates';
 
-    async execute(...args: any): Promise<unknown> {
-        log.info('CheckForCloudUpdates command started');
-        try {
-            const entry = args[0][0] ?? undefined;
+	async execute(...args: unknown[]): Promise<boolean> {
+		const contextName = 'CheckForCloudUpdates';
+		log.info(`${contextName} command started`);
 
-            if (!entry) {
-                vscode.window.showErrorMessage("No organization selected");
-                return false;
-            }
+		try {
+			const entry = this.extractAndValidateEntry(args, contextName);
+			const org = CloudOperations.validateOrgFromEntry(entry, contextName);
 
-            // Get org from the entry's URI using tree lookup
-            const org: Org = this.cmdContext.fs.tree.lookupOrg(entry.getUri());
+			if (!CloudOperations.validateCloudSyncEnabled(entry.client, org.label)) {
+				return false;
+			}
 
-            // Check if cloud sync is enabled
-            if (!storage.isCloudSyncEnabled(entry.client)) {
-                vscode.window.showInformationMessage(`Cloud sync is not enabled for ${org.label}`);
-                return false;
-            }
+			const updateResult = await CloudOperations.performUpdateCheck(entry.client, org.label);
+			if (!updateResult) {
+				return false;
+			}
 
-            vscode.window.showInformationMessage("Checking for cloud updates...", { modal: false });
+			await CloudOperations.handleUpdateNotification(updateResult, org.label, entry);
+			return true;
+		} catch (error) {
+			log.error(`${contextName} command failed: ${error}`, true);
+			throw new Error(`Failed to check for cloud updates: ${error}`);
+		}
+	}
 
-            // Check for updates
-            const updateCheck = await storage.checkForCloudUpdates(entry.client);
+	private extractAndValidateEntry(args: unknown[], contextName: string): any {
+		if (!Array.isArray(args) || args.length === 0) {
+			log.error(`${contextName}: No arguments provided`, true);
+			throw new Error('No organization selected');
+		}
 
-            if (updateCheck.hasUpdates) {
-                const author = updateCheck.author ? ` by ${updateCheck.author}` : '';
-                const action = await vscode.window.showInformationMessage(
-                    `Cloud updates found for ${org.label}${author}. Refresh now?`,
-                    'Refresh Now',
-                    'Later'
-                );
+		const firstArg = args[0];
+		if (!Array.isArray(firstArg) || firstArg.length === 0) {
+			log.error(`${contextName}: Invalid argument structure`, true);
+			throw new Error('No organization selected');
+		}
 
-                if (action === 'Refresh Now') {
-                    await vscode.commands.executeCommand('rewst-buddy.RefreshStructureFromCloud', [entry]);
-                }
-            } else {
-                vscode.window.showInformationMessage(`No cloud updates found for ${org.label}`);
-            }
+		const entry = firstArg[0];
+		if (!entry) {
+			log.error(`${contextName}: No entry found in arguments`, true);
+			throw new Error('No organization selected');
+		}
 
-            return true;
-        } catch (error) {
-            log.error(`CheckForCloudUpdates command failed: ${error}`);
-            vscode.window.showErrorMessage(`Failed to check for updates: ${error}`);
-            return false;
-        }
-    }
+		return entry;
+	}
 }

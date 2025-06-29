@@ -1,51 +1,57 @@
-import RewstClient from "client/RewstClient";
-import GenericCommand from "../models/GenericCommand";
-import vscode from "vscode";
-import { createTemplate, Template } from "@fs/models";
-import { TemplateFolder } from "@fs/models";
-import { log } from "@log";
-
+import { log } from '@log';
+import { createTemplate, TemplateFolder } from '@models';
+import { CommandOperations, CommandValidator } from '@utils';
+import vscode from 'vscode';
+import GenericCommand from '../GenericCommand';
 
 export class CreateTemplate extends GenericCommand {
-  commandName = "CreateTemplate";
+	commandName = 'CreateTemplate';
 
-  async execute(...args: any): Promise<void> {
-    log.info('CreateTemplate command started');
-    try {
-      const entry = args[0][0] ?? undefined;
-      log.info(`Creating template in: ${entry?.label || 'unknown'} (${entry?.id || 'unknown'})`);
+	async execute(...args: unknown[]): Promise<void> {
+		log.info(`${this.commandName} command started`);
 
-      if (!(entry instanceof TemplateFolder)) {
-        const message =
-          "Cannot create template in something that is not a folder";
-        log.error(`CreateTemplate failed: ${message}`);
-        vscode.window.showErrorMessage(message);
-        throw new Error(message);
-      }
+		try {
+			const folder = CommandValidator.validateAndExtract<TemplateFolder>(
+				args,
+				TemplateFolder,
+				this.commandName,
+				'folder',
+			);
 
-      log.info('Prompting user for template name');
-      const label = await vscode.window.showInputBox({
-        placeHolder: "Template Name",
-        prompt: "Enter a name for the template",
-      });
+			const label = await this.promptForTemplateName();
+			if (!label) {
+				log.info(`${this.commandName}: No label provided, exiting template creation`);
+				return;
+			}
 
-      if (!label) {
-        log.info("No label provided, exiting Template Creation");
-        return;
-      }
+			const template = await this.createTemplate(folder, label);
+			await CommandOperations.refreshUI(folder, this.commandName);
 
-      log.info(`Creating template with name: ${label}`);
-      const template = await createTemplate(entry, label);
-      log.info(`Successfully created template: ${template.label} (${template.id})`);
-      
-      log.info('Refreshing view and saving folder structure');
-      vscode.commands.executeCommand("rewst-buddy.RefreshView", template);
-      vscode.commands.executeCommand("rewst-buddy.SaveFolderStructure", template);
-      
-      log.info('CreateTemplate command completed successfully');
-    } catch (error) {
-      log.error(`CreateTemplate command failed: ${error}`);
-      throw error;
-    }
-  }
+			log.info(`${this.commandName} command completed successfully`);
+		} catch (error) {
+			log.error(`${this.commandName} command failed: ${error}`, true);
+			throw new Error(`Failed to create template: ${error}`);
+		}
+	}
+
+	private async promptForTemplateName(): Promise<string | undefined> {
+		log.info(`${this.commandName}: Prompting user for template name`);
+		return await vscode.window.showInputBox({
+			placeHolder: 'Template Name',
+			prompt: 'Enter a name for the template',
+		});
+	}
+
+	private async createTemplate(folder: TemplateFolder, label: string): Promise<any> {
+		log.info(`${this.commandName}: Creating template with name: ${label} in folder: ${folder.label}`);
+		const template = await createTemplate(folder, label);
+
+		if (!template) {
+			log.error(`${this.commandName}: Failed to create template - null result`, true);
+			throw new Error('Template creation failed');
+		}
+
+		log.info(`${this.commandName}: Successfully created template: ${template.label} (${template.id})`);
+		return template;
+	}
 }

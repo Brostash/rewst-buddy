@@ -1,44 +1,81 @@
-import GenericCommand from "../models/GenericCommand";
-import { RewstClient } from "@client/index";
-import { Entry, Org } from "@fs/models";
-import { log } from "@log";
-import { getBackgroundSyncService } from "services/BackgroundSyncService";
-
+import { RewstClient } from '@client';
+import { context, fs, view } from '@global';
+import { log } from '@log';
+import { Org } from '@models';
+import { getBackgroundSyncService } from '../../services/BackgroundSyncService';
+import GenericCommand from '../GenericCommand';
 
 export class LoadClients extends GenericCommand {
-  commandName = "LoadClients";
+	commandName = 'LoadClients';
 
-  async execute(): Promise<unknown> {
-    log.info('LoadClients command started');
-    try {
-      const view = this.cmdContext.view;
+	async execute(): Promise<void> {
+		const contextName = 'LoadClients';
+		log.info(`${contextName} command started`);
 
-      log.info('Loading clients from storage');
-      const clients = await RewstClient.LoadClients(this.context);
-      log.info(`Found ${clients.length} clients to load`);
+		try {
+			const clients = await this.loadClientsFromStorage(contextName);
+			if (clients.length === 0) {
+				log.info(`${contextName}: No clients found to load`);
+				return;
+			}
 
-      const backgroundSync = getBackgroundSyncService(this.context);
+			const backgroundSync = getBackgroundSyncService();
+			await this.processClients(clients, backgroundSync, contextName);
 
-      for (const client of clients) {
-        log.info(`Creating org for client: ${client.orgId}`);
-        const org = await Org.create(this.cmdContext, client);
+			this.refreshView(contextName);
+			log.info(`${contextName} command completed successfully - loaded ${clients.length} clients`);
+		} catch (error) {
+			log.error(`${contextName} command failed: ${error}`, true);
+			throw new Error(`Failed to load clients: ${error}`);
+		}
+	}
 
-        view.rewstfs.tree.newOrg(org);
+	private async loadClientsFromStorage(contextName: string): Promise<RewstClient[]> {
+		log.info(`${contextName}: Loading clients from storage`);
+		const clients = await RewstClient.LoadClients(context);
 
-        // Register client with background sync service for cloud monitoring
-        backgroundSync.addClient(client);
+		if (!Array.isArray(clients)) {
+			log.error(`${contextName}: Invalid clients data - not an array`, true);
+			throw new Error('Invalid clients data received from storage');
+		}
 
-        log.info(`Successfully loaded org: ${org.label} (${org.orgId})`);
-      }
+		log.info(`${contextName}: Found ${clients.length} clients to load`);
+		return clients;
+	}
 
-      log.info('Refreshing view after loading clients');
-      this.cmdContext.view.refresh();
+	private async processClients(clients: RewstClient[], backgroundSync: any, contextName: string): Promise<void> {
+		for (const client of clients) {
+			if (!client?.orgId) {
+				log.error(`${contextName}: Invalid client - missing orgId`, true);
+				continue;
+			}
 
-      log.info(`LoadClients command completed successfully - loaded ${clients.length} clients`);
-      return;
-    } catch (error) {
-      log.error(`LoadClients command failed: ${error}`);
-      throw error;
-    }
-  }
+			await this.processSingleClient(client, backgroundSync, contextName);
+		}
+	}
+
+	private async processSingleClient(client: RewstClient, backgroundSync: any, contextName: string): Promise<void> {
+		log.info(`${contextName}: Creating org for client: ${client.orgId}`);
+		const org = await Org.create(client);
+
+		if (!org) {
+			log.error(`${contextName}: Failed to create org for client: ${client.orgId}`, true);
+			throw new Error(`Failed to create organization for client ${client.orgId}`);
+		}
+
+		fs.tree.newOrg(org);
+		backgroundSync.addClient(client);
+
+		log.info(`${contextName}: Successfully loaded org: ${org.label} (${org.orgId})`);
+	}
+
+	private refreshView(contextName: string): void {
+		try {
+			log.info(`${contextName}: Refreshing view after loading clients`);
+			view.refresh();
+		} catch (error) {
+			log.error(`${contextName}: Failed to refresh view: ${error}`, true);
+			// Don't throw here - main operation was successful
+		}
+	}
 }
