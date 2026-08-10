@@ -1,6 +1,6 @@
 /**
  * Characterization test: pins the exact operationName/operationType strings
- * that getSdk() passes to withWrapper for each of the 15 operations.
+ * that getSdk() passes to withWrapper for each of the 17 operations.
  *
  * This is NOT a red-then-green TDD test — no behavior is changing. It is
  * written against the current (still-generated) sdk.ts as a "before" baseline,
@@ -11,6 +11,7 @@ import { GraphQLClient } from 'graphql-request';
 import { setup, suite, test } from '../../test/tdd';
 import type { SdkFunctionWrapper } from './sdk';
 import { getSdk } from './sdk';
+import { ConversationRole } from './generated/graphql';
 
 interface RecordedCall {
 	operationName: string;
@@ -85,6 +86,17 @@ const wiringCases = {
 	User: {
 		operationType: 'query',
 		invoke: sdk => sdk.User(),
+	},
+	createConversation: {
+		operationType: 'mutation',
+		invoke: sdk => sdk.createConversation({ conversation: { orgId: 'o' } }),
+	},
+	createConversationMessage: {
+		operationType: 'mutation',
+		invoke: sdk =>
+			sdk.createConversationMessage({
+				message: { conversationId: 'c', role: ConversationRole.User, content: 'x' },
+			}),
 	},
 } satisfies Record<OperationName, WiringCase>;
 

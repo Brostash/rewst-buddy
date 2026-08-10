@@ -3,6 +3,8 @@ import { createClient } from 'graphql-ws';
 import vscode from 'vscode';
 import WebSocket from 'ws';
 import { getSubscriptionsUrl, RegionConfig } from '../RegionConfig';
+import { ConversationRole, type ConversationType } from '../graphql/generated/graphql';
+import type { SeedChunk } from '../../ui/chat/model/statelessTranscript';
 import type Session from '../Session';
 import { ConversationEventMapper, type ConversationEvent, type RawConversationPayload } from './conversationEvents';
 
@@ -202,4 +204,42 @@ export async function* askRewstAi(options: AskOptions): AsyncGenerator<Conversat
 		cancelListener?.dispose();
 		dispose();
 	}
+}
+
+/**
+ * Create a fresh conversation and write role-aware history chunks into it via
+ * the createConversationMessage mutation. The AI backend's context builder
+ * reads mutation-written records on the FIRST subscription ask only (probe
+ * validated 2026-08-10): later asks on the same conversation do not see them
+ * and mid-conversation seeding is invisible. Callers must therefore seed once
+ * per ask and treat the conversation as single-use (delete after the stream
+ * completes). Chunks must stay under the backend's 60,000-char per-message cap
+ * (MESSAGE_TOO_LONG); role SYSTEM is rejected server-side.
+ */
+export async function seedConversation(
+	session: Session,
+	orgId: string,
+	conversationType: string,
+	chunks: readonly SeedChunk[],
+): Promise<string> {
+	const sdk = session.sdk;
+	if (!sdk) throw new Error('Rewst session SDK is not initialized; cannot seed a conversation.');
+	const created = await sdk.createConversation({
+		conversation: {
+			orgId,
+			title: `rewst-buddy ${new Date().toTimeString().slice(0, 5)}`,
+			type: conversationType as ConversationType,
+		},
+	});
+	const conversationId = created.createConversation.id;
+	for (const chunk of chunks) {
+		await sdk.createConversationMessage({
+			message: {
+				conversationId,
+				role: chunk.role as ConversationRole,
+				content: chunk.content,
+			},
+		});
+	}
+	return conversationId;
 }
