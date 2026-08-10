@@ -6,6 +6,9 @@ import { serializeVisibleChat } from './statelessTranscript';
 
 const { suite, test, setup } = Mocha;
 const { User, Assistant } = vscode.LanguageModelChatMessageRole;
+// The installed API enum only declares User/Assistant; system prompts arrive
+// with a role outside that set, so tests simulate them with a raw value.
+const System = 3 as unknown as vscode.LanguageModelChatMessageRole;
 
 function message(role: vscode.LanguageModelChatMessageRole, content: unknown[]) {
 	return { role, content, name: undefined };
@@ -16,85 +19,82 @@ function text(value: string): vscode.LanguageModelTextPart {
 }
 
 suite('Unit: statelessTranscript', () => {
-	setup(() => {
-		initTestEnvironment();
-	});
+	setup(initTestEnvironment);
 
-	test('serializes visible user and assistant text in order', () => {
-		const transcript = serializeVisibleChat([
+	test('serializes text as role-aware seed chunks and skips system messages', () => {
+		const chunks = serializeVisibleChat([
+			message(System, [text('hidden system prompt')]),
 			message(User, [text('what is a trigger?')]),
 			message(Assistant, [text('An event that starts a workflow.')]),
-			message(User, [text('give me an example')]),
 		]);
 
-		assert.match(transcript, /<visible_chat_transcript>/);
-		assert.ok(transcript.indexOf('USER: what is a trigger?') < transcript.indexOf('ASSISTANT:'));
-		assert.match(transcript, /ASSISTANT: An event that starts a workflow\./);
-		assert.match(transcript, /USER: give me an example/);
+		assert.deepStrictEqual(chunks, [
+			{ role: 'USER', content: 'what is a trigger?' },
+			{ role: 'ASSISTANT', content: 'An event that starts a workflow.' },
+		]);
 	});
 
-	test('includes tool calls and tool results by tool name', () => {
+	test('serializes tool calls and results as USER entries', () => {
 		const call = new vscode.LanguageModelToolCallPart('call-1', 'read_file', { path: 'a.txt' });
 		const result = new vscode.LanguageModelToolResultPart('call-1', [text('file contents')]);
-		const transcript = serializeVisibleChat([
+		const chunks = serializeVisibleChat([
 			message(User, [text('check a.txt')]),
 			message(Assistant, [text('Looking.'), call]),
 			message(User, [result]),
 		]);
 
-		assert.match(transcript, /Requested editor tool: read_file \{"path":"a\.txt"\}/);
-		assert.match(transcript, /Editor tool result: read_file \{"path":"a\.txt"\}/);
-		assert.match(transcript, /file contents/);
+		assert.deepStrictEqual(chunks, [
+			{ role: 'USER', content: 'check a.txt' },
+			{ role: 'ASSISTANT', content: 'Looking.' },
+			{
+				role: 'USER',
+				content:
+					'Requested editor tool: read_file {"path":"a.txt"}\nEditor tool result: read_file {"path":"a.txt"}\nfile contents',
+			},
+		]);
 	});
 
-	test('strips activity lines from assistant text', () => {
-		const transcript = serializeVisibleChat([
-			message(User, [text('hi')]),
-			message(Assistant, [text('Before\n> _Searching documentation..._\nAfter')]),
+	test('chunks only at entry boundaries and keeps every chunk within 50k', () => {
+		const chunks = serializeVisibleChat([
+			message(User, [text('a'.repeat(30_000))]),
+			message(User, [text('b'.repeat(30_000))]),
+			message(Assistant, [text('answer')]),
 		]);
 
-		assert.match(transcript, /Before\s+After/);
-		assert.ok(!transcript.includes('Searching documentation'));
+		assert.deepStrictEqual(
+			chunks.map(chunk => chunk.content.length),
+			[30_000, 30_000, 6],
+		);
+		assert.ok(chunks.every(chunk => chunk.content.length <= 50_000));
 	});
 
-	test('caps and frames terminal tool output as likely-unrelated', () => {
+	test('truncates a single oversized entry below 50k with an explicit marker', () => {
+		const [chunk] = serializeVisibleChat([message(User, [text('x'.repeat(60_000))])]);
+		assert.strictEqual(chunk.role, 'USER');
+		assert.ok(chunk.content.endsWith('...(truncated)'));
+		assert.ok(chunk.content.length <= 48_000);
+	});
+
+	test('drops oldest entries above the total ceiling and adds an omission marker', () => {
+		const messages = Array.from({ length: 10 }, (_, i) => message(User, [text(`${i}:` + 'x'.repeat(44_000))]));
+		const chunks = serializeVisibleChat(messages);
+		const content = chunks.map(chunk => chunk.content).join('\n');
+		assert.match(content, /^\(\d+ earlier message\(s\) omitted\)/);
+		assert.ok(!content.includes('0:'), 'oldest entry is dropped');
+		assert.ok(content.includes('9:'), 'newest entry is retained');
+		assert.ok(chunks.reduce((sum, chunk) => sum + chunk.content.length, 0) <= 400_000);
+	});
+
+	test('strips activity and tightly frames terminal output', () => {
 		const call = new vscode.LanguageModelToolCallPart('call-1', 'run_in_terminal', { command: 'ls' });
-		const longOutput = 'x'.repeat(5_000);
-		const result = new vscode.LanguageModelToolResultPart('call-1', [text(longOutput)]);
-		const transcript = serializeVisibleChat([
-			message(User, [text('what does the terminal say?')]),
-			message(Assistant, [text('Checking.'), call]),
+		const result = new vscode.LanguageModelToolResultPart('call-1', [text('x'.repeat(5_000))]);
+		const chunks = serializeVisibleChat([
+			message(Assistant, [text('Before\n> _Searching documentation..._\nAfter'), call]),
 			message(User, [result]),
 		]);
-
-		assert.match(transcript, /Editor tool result: run_in_terminal/);
-		assert.match(
-			transcript,
-			/raw terminal output — likely unrelated to the current request unless the user explicitly asked about the terminal/,
-		);
-		assert.ok(
-			!transcript.includes(longOutput),
-			'the full 5,000-char terminal output should be capped, not included verbatim',
-		);
-	});
-
-	test('does not cap or frame non-terminal tool output beyond the default cap', () => {
-		const call = new vscode.LanguageModelToolCallPart('call-1', 'read_file', { path: 'a.txt' });
-		const longOutput = 'y'.repeat(5_000);
-		const result = new vscode.LanguageModelToolResultPart('call-1', [text(longOutput)]);
-		const transcript = serializeVisibleChat([
-			message(User, [text('check a.txt')]),
-			message(Assistant, [text('Looking.'), call]),
-			message(User, [result]),
-		]);
-
-		assert.ok(
-			!transcript.includes('raw terminal output'),
-			'non-terminal tool output is not framed as terminal output',
-		);
-		assert.ok(
-			transcript.includes(longOutput),
-			'non-terminal tool output is not capped by the tighter terminal limit',
-		);
+		const content = chunks.map(chunk => chunk.content).join('\n');
+		assert.ok(!content.includes('Searching documentation'));
+		assert.match(content, /raw terminal output — likely unrelated/);
+		assert.ok(content.includes('...(truncated)'));
 	});
 });
