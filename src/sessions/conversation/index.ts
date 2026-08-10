@@ -1,4 +1,4 @@
-export { askRewstAi, runConversation, type AskOptions } from './ConversationClient';
+export { askRewstAi, runConversation, seedConversation, type AskOptions } from './ConversationClient';
 export {
 	ConversationEventMapper,
 	type ApprovalTool,

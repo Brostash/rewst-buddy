@@ -1,23 +1,27 @@
 import vscode from 'vscode';
 
-const MAX_ENTRY_CHARS = 8_000;
-const MAX_TOTAL_CHARS = 64_000;
-// Terminal-reading tools (VS Code agent mode's run_in_terminal, get_terminal_output,
-// etc.) can surface scrollback from an unrelated session in the same integrated
-// terminal. Cap and frame that output much tighter than other tool results so the
-// backend doesn't treat leftover terminal text as an implicit directive (#168).
+const MAX_CHUNK_CHARS = 50_000;
+const MAX_ENTRY_CHARS = 48_000;
+// Tunable against the server-wide conversation limit probed by
+// src/test/integration/conversationLimit*. Keep headroom for backend metadata.
+const MAX_TOTAL_CHARS = 400_000;
+const TRUNCATION_MARKER = '...(truncated)';
 const TERMINAL_TOOL_NAME_PATTERN = /terminal/i;
 const MAX_TERMINAL_OUTPUT_CHARS = 2_000;
 const TERMINAL_OUTPUT_FRAME =
 	'(raw terminal output — likely unrelated to the current request unless the user explicitly asked about the terminal)';
 
-type RequestMessage = Pick<vscode.LanguageModelChatRequestMessage, 'role' | 'content'>;
+export type SeedRole = 'USER' | 'ASSISTANT';
+export interface SeedChunk {
+	role: SeedRole;
+	content: string;
+}
 
+type RequestMessage = Pick<vscode.LanguageModelChatRequestMessage, 'role' | 'content'>;
 interface ToolCallInfo {
 	name: string;
 	input: unknown;
 }
-
 interface PartLike {
 	value?: unknown;
 	callId?: unknown;
@@ -45,86 +49,85 @@ function stripActivity(text: string): string {
 }
 
 function truncate(text: string, max: number): string {
-	return text.length > max ? `${text.slice(0, max)} ...(truncated)` : text;
-}
-
-function roleLabel(role: vscode.LanguageModelChatMessageRole): string {
-	if (role === vscode.LanguageModelChatMessageRole.User) return 'USER';
-	if (role === vscode.LanguageModelChatMessageRole.Assistant) return 'ASSISTANT';
-	return 'MESSAGE';
+	if (text.length <= max) return text;
+	return `${text.slice(0, max - TRUNCATION_MARKER.length)}${TRUNCATION_MARKER}`;
 }
 
 function collectCalls(messages: readonly RequestMessage[]): Map<string, ToolCallInfo> {
 	const calls = new Map<string, ToolCallInfo>();
-	for (const message of messages) {
+	for (const message of messages)
 		for (const part of message.content) {
 			const candidate = part as PartLike;
 			if (typeof candidate?.callId === 'string' && typeof candidate.name === 'string') {
 				calls.set(candidate.callId, { name: candidate.name, input: candidate.input });
 			}
 		}
-	}
 	return calls;
 }
 
-function serializePart(part: unknown, calls: ReadonlyMap<string, ToolCallInfo>): string {
-	const text = stripActivity(textOf(part));
-	if (text) return text;
-
+function serializeToolPart(part: unknown, calls: ReadonlyMap<string, ToolCallInfo>): string {
 	const candidate = part as PartLike;
 	if (typeof candidate?.callId !== 'string') return '';
-
 	if (typeof candidate.name === 'string') {
 		const args = candidate.input === undefined ? '' : ` ${safeJson(candidate.input)}`;
 		return `Requested editor tool: ${candidate.name}${args}`;
 	}
-
-	if (Array.isArray(candidate.content)) {
-		const call = calls.get(candidate.callId);
-		const name = call?.name ?? 'tool';
-		const args = call?.input === undefined ? '' : ` ${safeJson(call.input)}`;
-		const rawOutput = candidate.content.map(textOf).filter(Boolean).join('\n');
-		if (TERMINAL_TOOL_NAME_PATTERN.test(name)) {
-			const output = truncate(rawOutput, MAX_TERMINAL_OUTPUT_CHARS);
-			return `Editor tool result: ${name}${args}\n${TERMINAL_OUTPUT_FRAME}\n${output}`;
-		}
-		return `Editor tool result: ${name}${args}\n${rawOutput}`;
+	if (!Array.isArray(candidate.content)) return '';
+	const call = calls.get(candidate.callId);
+	const name = call?.name ?? 'tool';
+	const args = call?.input === undefined ? '' : ` ${safeJson(call.input)}`;
+	const rawOutput = candidate.content.map(textOf).filter(Boolean).join('\n');
+	if (TERMINAL_TOOL_NAME_PATTERN.test(name)) {
+		return `Editor tool result: ${name}${args}\n${TERMINAL_OUTPUT_FRAME}\n${truncate(rawOutput, MAX_TERMINAL_OUTPUT_CHARS)}`;
 	}
-
-	return '';
+	return `Editor tool result: ${name}${args}\n${rawOutput}`;
 }
 
-export function serializeVisibleChat(messages: readonly RequestMessage[]): string {
-	const calls = collectCalls(messages);
-	const entries: string[] = [];
-
-	for (const message of messages) {
-		const body = message.content
-			.map(part => serializePart(part, calls))
-			.filter(Boolean)
-			.join('\n')
-			.trim();
-		if (!body) continue;
-		entries.push(
-			`${roleLabel(message.role as vscode.LanguageModelChatMessageRole)}: ${truncate(body, MAX_ENTRY_CHARS)}`,
-		);
+function appendChunk(chunks: SeedChunk[], entry: SeedChunk): void {
+	const previous = chunks[chunks.length - 1];
+	if (previous?.role === entry.role && previous.content.length + 1 + entry.content.length <= MAX_CHUNK_CHARS) {
+		previous.content += `\n${entry.content}`;
+	} else {
+		chunks.push({ ...entry });
 	}
+}
 
-	if (entries.length === 0) return '';
+/** Serialize the replayed VS Code history into mutation-safe, role-aware seed chunks. */
+export function serializeVisibleChat(messages: readonly RequestMessage[]): SeedChunk[] {
+	const calls = collectCalls(messages);
+	const entries: SeedChunk[] = [];
+	for (const message of messages) {
+		// Skip anything that is not a user or assistant turn (the VS Code system
+		// prompt and other non-seedable roles must never be written as seeds;
+		// the backend rejects SYSTEM writes anyway). The role enum in this API
+		// version only declares User/Assistant, so test the value directly.
+		if (
+			message.role !== vscode.LanguageModelChatMessageRole.User &&
+			message.role !== vscode.LanguageModelChatMessageRole.Assistant
+		) {
+			continue;
+		}
+		const textRole: SeedRole =
+			message.role === vscode.LanguageModelChatMessageRole.Assistant ? 'ASSISTANT' : 'USER';
+		for (const part of message.content) {
+			const text = stripActivity(textOf(part));
+			if (text) entries.push({ role: textRole, content: truncate(text, MAX_ENTRY_CHARS) });
+			const tool = serializeToolPart(part, calls);
+			if (tool) entries.push({ role: 'USER', content: truncate(tool, MAX_ENTRY_CHARS) });
+		}
+	}
 
 	let dropped = 0;
-	let total = entries.reduce((sum, entry) => sum + entry.length, 0);
+	let total = entries.reduce((sum, entry) => sum + entry.content.length, 0);
 	while (total > MAX_TOTAL_CHARS && entries.length > 1) {
 		const removed = entries.shift();
-		if (removed === undefined) break;
-		total -= removed.length;
+		if (!removed) break;
+		total -= removed.content.length;
 		dropped++;
 	}
+	if (dropped > 0) entries.unshift({ role: 'USER', content: `(${dropped} earlier message(s) omitted)` });
 
-	const omitted = dropped > 0 ? `\n(${dropped} earlier message(s) omitted)` : '';
-	return `<visible_chat_transcript>
-The user is talking from VS Code. Treat this visible transcript as the authoritative conversation context. Answer only the latest USER entry; use earlier entries only as context.${omitted}
-
-${entries.join('\n\n')}
-</visible_chat_transcript>`;
+	const chunks: SeedChunk[] = [];
+	for (const entry of entries) appendChunk(chunks, entry);
+	return chunks;
 }

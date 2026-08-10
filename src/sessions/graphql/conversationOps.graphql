@@ -40,6 +40,22 @@ query getConversation($id: ID!) {
 	}
 }
 
+mutation createConversation($conversation: ConversationInput!) {
+	createConversation(conversation: $conversation) {
+		...conversation
+	}
+}
+
+mutation createConversationMessage($message: ConversationMessageInput!) {
+	createConversationMessage(message: $message) {
+		id
+		role
+		content
+		conversationId
+		createdAt
+	}
+}
+
 mutation deleteConversation($id: ID!) {
 	deleteConversation(id: $id)
 }

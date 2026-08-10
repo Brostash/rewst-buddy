@@ -28,37 +28,48 @@ active organization's session.
 - **THEN** the message is sent to Rewst's AI backend and the streamed response is
   shown in the chat view
 
-### Requirement: Preserve conversation continuity safely
+### Requirement: Seed a fresh conversation for every ask
 
-The system SHALL reuse a warm backend conversation for follow-up turns in the
-same visible chat when the replayed VS Code history is still at the backend
-conversation tip. It SHALL fork a fresh backend conversation when the visible
-history has been rewound, and SHALL forget/delete the stale backend conversation
-so rolled-back turns are not reattached later.
+The system SHALL create a fresh backend conversation for every ask and write the
+replayed visible chat history into it as role-aware seed messages via the
+`createConversationMessage` mutation before sending the actual message. It SHALL
+NOT look up, reuse, or continue prior backend conversations, and SHALL delete
+each conversation after its stream completes (or is cancelled or errors). The
+backend reads mutation-written records on the first ask only, so every ask
+(including tool-round continuations and retries) seeds a brand-new conversation.
+
+Source: `src/ui/chat/model/RoboRewstyChatModelProvider.ts`,
+`src/sessions/conversation/ConversationClient.ts` (seedConversation).
 
 #### Scenario: Follow-up turn
 
 - **GIVEN** a user has sent a first message and the backend returned a
   conversation id
 - **WHEN** the user sends the next message in the same visible chat
-- **THEN** the extension sends only the incremental user turn to the existing
-  backend conversation
-- **AND** it does not re-send the full visible transcript or the transport
-  directive
+- **THEN** the extension creates a fresh backend conversation, reseeds the full
+  visible history as role-aware chunks, and sends the new user turn
+- **AND** the previous conversation is deleted after its stream completes
 
-#### Scenario: Restored checkpoint
+#### Scenario: System prompt is never seeded
 
-- **GIVEN** a visible chat has been restored to an earlier checkpoint
-- **WHEN** the user asks a different follow-up
-- **THEN** the extension starts a fresh backend conversation with a stateless
-  visible transcript
-- **AND** the old backend conversation is forgotten so hidden rolled-back turns
-  cannot leak into the new branch
+- **GIVEN** the replayed VS Code history includes a System-role message (the
+  VS Code-generated system prompt)
+- **WHEN** the history is serialized into seeds
+- **THEN** the System message is skipped entirely and no seed carries it
 
-### Requirement: Cap and frame high-noise tool output in the stateless transcript
+#### Scenario: Backend error
 
-When a fresh backend conversation is started with a stateless visible
-transcript, the system SHALL serialize editor tool results by tool name. A
+- **GIVEN** an ask errors before any output has streamed and no in-process
+  Buddy tool has run
+- **WHEN** the backend reports an error
+- **THEN** the extension retries once with another fresh conversation
+- **AND** the failed conversation is deleted
+
+### Requirement: Cap and frame high-noise tool output in the seed transcript
+
+When the visible chat history is serialized into seed chunks for a fresh
+backend conversation, the system SHALL serialize editor tool results by tool
+name. A
 tool result whose tool name matches a terminal-reading tool (e.g.
 `run_in_terminal`, `get_terminal_output`) SHALL be capped far tighter than
 other tool results and prefixed with an explicit note that the content is raw
@@ -66,7 +77,9 @@ terminal output likely unrelated to the current request, so leftover
 scrollback from an unrelated terminal session (a different Claude Code or CLI
 run in the same integrated terminal) is not treated by the backend as an
 implicit directive. Other tool results SHALL keep the standard, more generous
-per-entry cap.
+per-entry cap. Each seed chunk SHALL stay within the backend's per-message
+character limit (chunks are split at entry boundaries, and the total history
+is capped by dropping the oldest entries with an explicit omission marker).
 
 Source: `src/ui/chat/model/statelessTranscript.ts`.
 
@@ -74,7 +87,7 @@ Source: `src/ui/chat/model/statelessTranscript.ts`.
 
 - **GIVEN** the visible chat history includes a terminal-reading tool's result
   with output far longer than the terminal-specific cap
-- **WHEN** the stateless transcript is serialized
+- **WHEN** the seed transcript is serialized
 - **THEN** that tool result is truncated to the tighter terminal cap
 - **AND** it is prefixed with a note marking it as likely-unrelated raw
   terminal output
@@ -83,9 +96,16 @@ Source: `src/ui/chat/model/statelessTranscript.ts`.
 
 - **GIVEN** the visible chat history includes a non-terminal editor tool's
   result (e.g. a file read)
-- **WHEN** the stateless transcript is serialized
+- **WHEN** the seed transcript is serialized
 - **THEN** that tool result keeps the standard per-entry cap and is not
   prefixed with the terminal-output note
+
+#### Scenario: History larger than the seed budget
+
+- **GIVEN** the visible chat history exceeds the total seed ceiling
+- **WHEN** the seed transcript is serialized
+- **THEN** the oldest entries are dropped and an explicit
+  "(N earlier message(s) omitted)" marker is seeded in their place
 
 ### Requirement: Honor conversation type and custom instructions
 

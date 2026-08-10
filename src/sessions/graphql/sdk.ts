@@ -2,8 +2,12 @@ import { GraphQLClient, RequestOptions } from 'graphql-request';
 import type {
 	AddAllowedToolMutation,
 	AddAllowedToolMutationVariables,
+	CreateConversationMessageMutation,
+	CreateConversationMessageMutationVariables,
 	CreateConversationMessageVoteMutation,
 	CreateConversationMessageVoteMutationVariables,
+	CreateConversationMutation,
+	CreateConversationMutationVariables,
 	CreateTemplateMinimalMutation,
 	CreateTemplateMinimalMutationVariables,
 	DeleteConversationMutation,
@@ -33,6 +37,8 @@ import type {
 } from './generated/graphql';
 import {
 	AddAllowedToolDocument,
+	CreateConversationDocument,
+	CreateConversationMessageDocument,
 	CreateConversationMessageVoteDocument,
 	CreateTemplateMinimalDocument,
 	DeleteConversationDocument,
@@ -54,8 +60,12 @@ export type {
 	AddAllowedToolMutationVariables,
 	ConversationFragment,
 	ConversationMessageFragment,
+	CreateConversationMessageMutation,
+	CreateConversationMessageMutationVariables,
 	CreateConversationMessageVoteMutation,
 	CreateConversationMessageVoteMutationVariables,
+	CreateConversationMutation,
+	CreateConversationMutationVariables,
 	CreateTemplateMinimalMutation,
 	CreateTemplateMinimalMutationVariables,
 	DeleteConversationMutation,
@@ -170,6 +180,42 @@ export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = 
 						signal,
 					}),
 				'createConversationMessageVote',
+				'mutation',
+				variables,
+			);
+		},
+		createConversation(
+			variables: CreateConversationMutationVariables,
+			requestHeaders?: GraphQLClientRequestHeaders,
+			signal?: RequestInit['signal'],
+		): Promise<CreateConversationMutation> {
+			return withWrapper(
+				wrappedRequestHeaders =>
+					client.request<CreateConversationMutation>({
+						document: CreateConversationDocument,
+						variables,
+						requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
+						signal,
+					}),
+				'createConversation',
+				'mutation',
+				variables,
+			);
+		},
+		createConversationMessage(
+			variables: CreateConversationMessageMutationVariables,
+			requestHeaders?: GraphQLClientRequestHeaders,
+			signal?: RequestInit['signal'],
+		): Promise<CreateConversationMessageMutation> {
+			return withWrapper(
+				wrappedRequestHeaders =>
+					client.request<CreateConversationMessageMutation>({
+						document: CreateConversationMessageDocument,
+						variables,
+						requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders },
+						signal,
+					}),
+				'createConversationMessage',
 				'mutation',
 				variables,
 			);

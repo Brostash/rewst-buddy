@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { runConversation } from './ConversationClient';
+import { runConversation, seedConversation } from './ConversationClient';
+import type Session from '../Session';
 import { ConversationEventMapper, type ConversationEvent, type RawConversationPayload } from './conversationEvents';
 
 const { suite, test } = Mocha;
@@ -136,5 +137,38 @@ suite('Unit: runConversation', () => {
 		// Iterator release is fire-and-forget; let queued microtasks run
 		await new Promise(resolve => setImmediate(resolve));
 		assert.ok(returned, 'source iterator should have been returned/closed');
+	});
+});
+
+suite('Unit: seedConversation', () => {
+	test('creates a titled conversation and writes seed chunks in order', async () => {
+		const calls: { operation: string; variables: unknown }[] = [];
+		const session = {
+			sdk: {
+				createConversation: async (variables: unknown) => {
+					calls.push({ operation: 'createConversation', variables });
+					return { createConversation: { id: 'conv-seeded' } };
+				},
+				createConversationMessage: async (variables: unknown) => {
+					calls.push({ operation: 'createConversationMessage', variables });
+					return { createConversationMessage: { id: 'message' } };
+				},
+			},
+		} as unknown as Session;
+
+		const id = await seedConversation(session, 'org-1', 'HELP_DOCS', [
+			{ role: 'USER', content: 'question' },
+			{ role: 'ASSISTANT', content: 'answer' },
+		]);
+
+		assert.strictEqual(id, 'conv-seeded');
+		assert.strictEqual(calls[0].operation, 'createConversation');
+		assert.deepStrictEqual(
+			calls.slice(1).map(call => call.variables),
+			[
+				{ message: { conversationId: 'conv-seeded', role: 'USER', content: 'question' } },
+				{ message: { conversationId: 'conv-seeded', role: 'ASSISTANT', content: 'answer' } },
+			],
+		);
 	});
 });
