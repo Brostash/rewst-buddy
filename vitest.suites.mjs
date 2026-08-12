@@ -28,5 +28,6 @@ export const vitestSuites = [
 	'src/ui/jinja/jinjaPreviewRender.test.ts',
 	'src/workflow/lint.test.ts',
 	'src/workflow/types.test.ts',
+	'src/workflow/layout.test.ts',
 	'src/crates/crateUnpack.test.ts',
 ];
