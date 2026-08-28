@@ -1,5 +1,6 @@
 import { CRATE_REUSE_STEERING, WORKFLOW_START_STEERING } from '@workflow';
 import { z } from 'zod';
+import { WorkflowType } from '../sessions/graphql/generated/graphql';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
@@ -13,6 +14,7 @@ import {
 	toInputSchema,
 } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
+import { OPTIONS_OUTPUT_NAME } from './formWorkflowChecks';
 
 /**
  * Workflow create/delete capabilities. buddy_create_workflow makes an empty workflow
@@ -25,7 +27,7 @@ import { orgDisplayName, withMutationApproval } from './mutationApproval';
  */
 
 const CREATE_WORKFLOW = `mutation RewstBuddyMcpCreateWorkflow($workflow: WorkflowInput!) {
-  createWorkflow(workflow: $workflow) { id name orgId }
+  createWorkflow(workflow: $workflow) { id name orgId type input }
 }`;
 
 const DELETE_WORKFLOW = `mutation RewstBuddyMcpDeleteWorkflow($id: ID!) {
@@ -40,6 +42,8 @@ interface WorkflowRow {
 	id?: string;
 	name?: string;
 	orgId?: string;
+	type?: string;
+	input?: string[];
 }
 
 const WORKFLOW_DESCRIPTION_MAX_LENGTH = 255;
@@ -60,6 +64,19 @@ async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, 
 	});
 }
 
+const workflowOutputSchema = z.strictObject({
+	name: z
+		.string()
+		.trim()
+		.min(1, { error: 'Each workflow output needs a non-empty "name".' })
+		.describe('Output name, e.g. "options".'),
+	value: z
+		.string()
+		.describe(
+			'Jinja expression producing the value, e.g. "{{ CTX.option_list }}". An empty string is stored as an empty expression.',
+		),
+});
+
 const createWorkflowSchema = z.object({
 	orgId: ORG_ID_FIELD,
 	name: z
@@ -77,27 +94,85 @@ const createWorkflowSchema = z.object({
 				.optional(),
 		)
 		.describe(`Optional workflow description, up to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters.`),
+	type: z
+		.enum(WorkflowType, { error: `Workflow type must be one of ${Object.values(WorkflowType).join(', ')}.` })
+		.optional()
+		.describe(
+			`Workflow type (default ${WorkflowType.Standard}). Use ${WorkflowType.OptionGenerator} for a workflow that populates a form dropdown; it must declare an "${OPTIONS_OUTPUT_NAME}" output.`,
+		),
+	input: z
+		.array(z.string().trim().min(1, { error: 'Each workflow input name must be a non-empty string.' }))
+		.max(100)
+		.optional()
+		.describe('Declared input names the workflow accepts. A form field can only map into an input declared here.'),
+	output: z
+		.array(workflowOutputSchema)
+		.max(100)
+		.optional()
+		.describe(
+			`Declared outputs, as {name, value} pairs. An ${WorkflowType.OptionGenerator} needs one named "${OPTIONS_OUTPUT_NAME}".`,
+		),
 });
 
 const createWorkflowSpec: ToolSpecDefinition = {
 	name: 'buddy_create_workflow',
-	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code. ${CRATE_REUSE_STEERING} ${WORKFLOW_START_STEERING}`,
+	description: `Create a new Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Pass type, input and output to declare the workflow's contract up front — an ${WorkflowType.OptionGenerator} that populates a form dropdown needs its input names and an "${OPTIONS_OUTPUT_NAME}" output. This only ever creates a new workflow: it never converts, clones, activates or re-permissions an existing one. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code. ${CRATE_REUSE_STEERING} ${WORKFLOW_START_STEERING}`,
 	// NOTE: CRATE_REUSE_STEERING and WORKFLOW_START_STEERING are embedded verbatim above — do not paraphrase them here.
 	inputSchema: toInputSchema(createWorkflowSchema),
 };
 
 async function runCreateWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { orgId, name, description } = parseCapabilityInput(createWorkflowSchema, input);
+	const {
+		orgId,
+		name,
+		description,
+		type,
+		input: inputNames,
+		output,
+	} = parseCapabilityInput(createWorkflowSchema, input);
+	const duplicateInput = inputNames?.find((entry, index) => inputNames.indexOf(entry) !== index);
+	if (duplicateInput) throw new Error(`Workflow input "${duplicateInput}" is declared more than once.`);
+	const outputNames = (output ?? []).map(entry => entry.name);
+	const duplicateOutput = outputNames.find((entry, index) => outputNames.indexOf(entry) !== index);
+	if (duplicateOutput) throw new Error(`Workflow output "${duplicateOutput}" is declared more than once.`);
+	if (type === WorkflowType.OptionGenerator && !outputNames.includes(OPTIONS_OUTPUT_NAME)) {
+		throw new Error(
+			`An ${WorkflowType.OptionGenerator} workflow must declare an "${OPTIONS_OUTPUT_NAME}" output; a form dropdown reads its choices from it. Pass output: [{ "name": "${OPTIONS_OUTPUT_NAME}", "value": "{{ ... }}" }].`,
+		);
+	}
+
 	const orgName = orgDisplayName(ctx);
 	const scope: MutationScope = { scopeId: orgId, scopeName: `new workflow "${name}"`, orgId, orgName };
-	const summary = `Create workflow "${name}" in org "${orgName}" (${orgId})`;
+	const contract = [
+		type ? `type ${type}` : undefined,
+		inputNames?.length ? `inputs ${inputNames.join(', ')}` : undefined,
+		outputNames.length ? `outputs ${outputNames.join(', ')}` : undefined,
+	].filter(Boolean);
+	const summary = `Create workflow "${name}" in org "${orgName}" (${orgId})${
+		contract.length ? ` with ${contract.join('; ')}` : ''
+	}`;
 	return withMutationApproval(scope, summary, async () => {
 		const workflow: Record<string, unknown> = { orgId, name };
 		if (description !== undefined) workflow.description = description;
+		if (type !== undefined) workflow.type = type;
+		if (inputNames !== undefined) workflow.input = inputNames;
+		// Workflow.output is a JSON list of single-key {name: expression} objects.
+		if (output !== undefined) workflow.output = output.map(entry => ({ [entry.name]: entry.value }));
 		const data = await rawGraphqlOrThrow(ctx.session, CREATE_WORKFLOW, { workflow });
 		const created = (data as { createWorkflow?: WorkflowRow } | undefined)?.createWorkflow;
 		if (!created?.id) throw new Error('createWorkflow returned no workflow; the mutation may have failed.');
-		return JSON.stringify({ status: 'created', id: created.id, name: created.name ?? name }, null, 2);
+		return JSON.stringify(
+			{
+				status: 'created',
+				id: created.id,
+				name: created.name ?? name,
+				type: created.type ?? type ?? WorkflowType.Standard,
+				input: created.input ?? inputNames ?? [],
+				output: outputNames,
+			},
+			null,
+			2,
+		);
 	});
 }
 

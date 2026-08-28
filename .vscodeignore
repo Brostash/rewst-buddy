@@ -34,6 +34,12 @@ eslint.config.mjs
 CLAUDE.md
 vsc-extension-quickstart.md
 docs/dev/**
+internal/**
+.orchestrate/**
+.manage/**
+dev-workspace/**
+openspec/**
+.markdownlint-cli2.jsonc
 
 # Test files
 **/.vscode-test.*

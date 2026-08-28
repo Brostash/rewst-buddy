@@ -15,6 +15,7 @@ const { suite, test, setup, teardown } = Mocha;
 function useSession(orgId = 'org-1', orgName = 'Acme') {
 	const { session } = createMockSession({ profile: { org: { id: orgId, name: orgName } } });
 	SessionManager._setSessionsForTesting([session]);
+	return session;
 }
 
 /** Minimal ServerResponse stand-in capturing the early-return gate writes. */
@@ -54,6 +55,113 @@ suite('Unit: mcpServer', () => {
 	});
 
 	suite('MCP SDK server (in-memory transport)', () => {
+		test('discovers and reads a complete form through the MCP protocol', async () => {
+			const session = useSession();
+			session.rawGraphql = async (_query, variables) => {
+				assert.deepStrictEqual(variables, { orgId: 'org-1', formId: 'form-1' });
+				return {
+					data: {
+						form: {
+							id: 'form-1',
+							orgId: 'org-1',
+							name: 'Intake',
+							fields: [
+								{
+									id: 'field-1',
+									index: 0,
+									type: 'TEXT_INPUT',
+									schema: { name: 'company' },
+									conditions: [],
+								},
+							],
+						},
+					},
+				};
+			};
+			const server = buildMcpServer();
+			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+			await server.connect(serverTransport);
+			const client = new Client({ name: 'form-test', version: '1' });
+			try {
+				await client.connect(clientTransport);
+				assert.ok((await client.listTools()).tools.some(tool => tool.name === 'buddy_get_form'));
+				const result = await client.callTool({
+					name: 'buddy_get_form',
+					arguments: { orgId: 'org-1', formId: 'form-1' },
+				});
+				assert.notStrictEqual(result.isError, true);
+				const form = JSON.parse((result.content as { text: string }[]).map(part => part.text).join(''));
+				assert.strictEqual(form.fields[0].schema.name, 'company');
+			} finally {
+				await client.close();
+				await server.close();
+			}
+		});
+		test('advertises the new form tools over real transport and validates without executing', async () => {
+			const session = useSession();
+			const queries: string[] = [];
+			session.rawGraphql = async (query: string) => {
+				queries.push(query);
+				return {
+					data: {
+						workflow: {
+							id: 'wf',
+							name: 'Get users',
+							orgId: 'org-1',
+							type: 'STANDARD',
+							input: [],
+							output: [],
+							visibleForOrganizations: [],
+							triggers: [],
+						},
+					},
+				};
+			};
+			const server = buildMcpServer();
+			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+			await server.connect(serverTransport);
+			const client = new Client({ name: 'form-tools-test', version: '1' });
+			try {
+				await client.connect(clientTransport);
+				const names = (await client.listTools()).tools.map(tool => tool.name);
+				assert.ok(names.includes('buddy_validate_form'));
+				// Write tools are off in this configuration, so nothing that executes
+				// a generator or writes a form may appear in the catalog.
+				for (const hidden of [
+					'buddy_create_form',
+					'buddy_add_form_field',
+					'buddy_test_form_options',
+					'buddy_create_trigger',
+				]) {
+					assert.ok(!names.includes(hidden), hidden);
+				}
+
+				const result = await client.callTool({
+					name: 'buddy_validate_form',
+					arguments: {
+						orgId: 'org-1',
+						typedFields: [{ name: 'user', type: 'SELECT', dynamicOptions: { workflowId: 'wf' } }],
+					},
+				});
+				assert.notStrictEqual(result.isError, true);
+				const report = JSON.parse((result.content as { text: string }[]).map(part => part.text).join(''));
+				assert.strictEqual(report.executed, false);
+				assert.strictEqual(report.validation.ok, false);
+				assert.ok(
+					report.validation.errors.some(
+						(error: { code: string }) => error.code === 'generator_workflow_wrong_type',
+					),
+				);
+				assert.ok(
+					queries.every(query => !query.includes('runWorkflowForOptions')),
+					'validation never executes the generator',
+				);
+			} finally {
+				await client.close();
+				await server.close();
+			}
+		});
+
 		test('lists read tools and runs buddy_list_orgs end to end', async () => {
 			useSession('org-1', 'Acme');
 			const server = buildMcpServer();

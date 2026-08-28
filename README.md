@@ -46,6 +46,7 @@ Want to pull in **every template** from an organization at once? See the [Bulk F
 - `Ctrl+Click` template navigation + hover info on `template('UUID')` calls
 - Template bundles — dependency-based grouping in the Explorer sidebar
 - Crate installer — browse the Crate catalog and install one into an org, with a config wizard built from the crate's own options (triggers install disabled by default)
+- [Forms through MCP](docs/features.md#forms-through-mcp) — read, build, and edit forms with typed field definitions; every write is validated before it is sent and read back afterward, and a workflow-generated dropdown can be run once to check the options it actually produces
 - Smart template opening — reuses existing linked files instead of creating untitled docs
 - File rename support + automatic stale link cleanup
 - Browser extension integration (sideload — not yet on the Chrome Web Store)

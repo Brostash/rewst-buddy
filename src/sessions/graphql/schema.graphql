@@ -48,6 +48,13 @@ directive @auth(
 ) on FIELD_DEFINITION | OBJECT
 
 """
+Instructs SqlDataSource to translate search/where/order conditions on this field to
+use the specified target field instead. Used for UUIDv7 primary keys which encode
+creation timestamps, allowing createdAt filters to be served via the primary key index.
+"""
+directive @filterAsField(field: String!) on FIELD_DEFINITION
+
+"""
 Filter a list-returning field by a SpiceDB CheckBulkPermissions call. The
 wrapped resolver runs first; its result is post-filtered to items the
 caller has `permission` on. Supports plain arrays and Connection-style
@@ -88,7 +95,19 @@ controls behaviour when `spicedb_permissions` is OFF — use `ALLOW` when the le
 caller path is still the authoritative gate (matching the middleware's flag-off
 pass-through).
 """
-directive @requiresGrant(onFlagOff: OnFlagOff = DENY, permission: String, permissions: [String!]) on FIELD_DEFINITION
+directive @requiresGrant(
+  """
+  ERROR (default) throws ROLE_ERR on a failed grant check. NULL resolves the
+  field to null instead — masking mode for nullable value-bearing fields, where
+  a field error would kill the whole query for any consumer under Apollo's
+  default errorPolicy. EMPTY resolves to [] — the masking mode for non-null
+  LIST fields, where null would violate the list's non-nullability.
+  """
+  onDenied: OnDenied = ERROR
+  onFlagOff: OnFlagOff = DENY
+  permission: String
+  permissions: [String!]
+) on FIELD_DEFINITION
 
 """
 Authorization directive to be placed on any Type that should be filtered to items that are
@@ -115,6 +134,20 @@ Authorization directive to be placed on fields whose PARENT object has an orgId 
 i.e. if placed on the `User.role` field the `User.orgId` will be checked
 """
 directive @requiresManagesParentObjOrgId on FIELD_DEFINITION
+
+"""
+Scope a field by the organization of its PARENT object (`source.orgId`), using
+the caller's managed-org set (hierarchy + Partner Delegated Access).
+
+Unlike `@requiresGrant` (a GLOBAL role-capability check with no org dimension),
+this answers "whose row is this?" — so it closes cross-tenant NESTED traversals
+a capability gate cannot express. DELIBERATELY reads no feature flag: tenant
+isolation must not share a kill switch with permission tier. (SC-105099)
+
+`onDenied` semantics match `@requiresGrant`. Use EMPTY for NON-NULL list fields;
+NULL on a non-null field nulls the entire parent chain.
+"""
+directive @requiresManagesParentOrg(onDenied: OnDenied = ERROR) on FIELD_DEFINITION
 
 """
 Gate a field on a SpiceDB CheckPermission call against an arbitrary
@@ -441,6 +474,37 @@ input BulkFormUserFilterInput {
   search: String
 }
 
+"""
+Result of a batched role membership change. `appliedIds` are the ids that were
+valid and processed (safe for the client to drop from its unsaved buffer,
+including idempotent no-ops); `skippedIds` are ids that could not be resolved
+(e.g. a user/org that no longer exists) and should be kept for retry.
+"""
+type BulkRoleMembershipResult {
+  """
+  Ids the caller can consider SETTLED — no retry needed. Includes ids that were
+  written, ids that were already in the requested state (idempotent no-ops), and
+  ids the server deliberately refused (see `refusedIds`). Deliberately a superset
+  of "changed": clients use it to drain an edit buffer.
+  """
+  appliedIds: [ID!]!
+
+  """
+  Ids that were REFUSED by policy, not written, and not an error (SC-83897).
+  Currently only `grantRoleToOrganizations`, where the org sits inside a blocked
+  subtree for this role and deny beats allow. Always a subset of `appliedIds`:
+  the request is settled (retrying changes nothing) but nothing was granted, so
+  a caller that reports plain success is lying. Empty for every other mutation.
+  """
+  refusedIds: [ID!]!
+  roleId: ID!
+
+  """
+  Ids whose target entity was not found. NOT settled — safe for the client to retry.
+  """
+  skippedIds: [ID!]!
+}
+
 input BulkSetFormPermissionsInput {
   formId: ID!
   operation: FormGrantOperation!
@@ -681,11 +745,6 @@ type ComponentInstanceResult {
   success: Boolean!
 }
 
-input ComponentInstanceUpdateInput {
-  componentVersionId: ID!
-  pageId: ID!
-}
-
 type ComponentTree {
   component: Component!
   createdAt: String
@@ -736,6 +795,8 @@ type Conversation {
   metadata: JSON
   orgId: ID!
   organization: Organization!
+  spendPercent: Int
+  spendState: SpendState!
   title: String
   type: ConversationType!
   updatedAt: String!
@@ -842,6 +903,7 @@ enum ConversationType {
   HELP_DOCS
   WORKFLOW_AUTO_DOCUMENTATION
   WORKFLOW_DIAGNOSIS
+  WORKFLOW_DIAGNOSIS_REMEDIATION
 }
 
 input ConversationWhereInput {
@@ -988,6 +1050,13 @@ input CrateOverrideOptionInput {
   isDefault: Boolean
   label: String
   value: String
+}
+
+type CratePackConfigStatus {
+  configured: Boolean!
+  installed: Boolean!
+  packId: ID!
+  testActionFailing: Boolean!
 }
 
 type CratePrimaryUnpackedWorkflow {
@@ -1139,6 +1208,22 @@ input CrateTriggerUnpackingInput {
   triggerName: String!
 }
 
+type CrateUnpackedResourceRef {
+  clonedFromId: ID
+  contentType: String
+  id: ID!
+  isSynchronized: Boolean
+  name: String
+  unpackedFromId: ID
+}
+
+type CrateUnpackedResources {
+  forms: [CrateUnpackedResourceRef!]!
+  templates: [CrateUnpackedResourceRef!]!
+  triggers: [CrateUnpackedResourceRef!]!
+  workflows: [CrateUnpackedResourceRef!]!
+}
+
 type CrateUnpackingArgument {
   crateToken: CrateToken!
   crateUnpackingArgumentSet: CrateUnpackingArgumentSet!
@@ -1161,7 +1246,7 @@ type CrateUnpackingArgumentSet {
   createdById: ID!
   humanSecondsSaved: Int!
   id: ID!
-  orgId: ID!
+  orgId: ID
   updatedAt: String
   updatedBy: User
   updatedById: ID
@@ -1688,7 +1773,9 @@ enum FormPermissionKey {
   CLONE
   DELETE
   EDIT
+  EXPORT
   EXTERNAL_VIEW
+  IMPORT
   MANAGE_ACCESS
   PUBLISH
   SUBMIT
@@ -2136,6 +2223,21 @@ type Mutation {
   approveUserInvite(id: ID!): UserInvite!
   assignGDAPAccess(packConfigId: ID!, relationshipId: ID!): JobRequestedResponse
   assignRoleToUser(roleId: ID!, userId: ID!): UserRole!
+
+  """
+  Batched assign: add the role to many users in one transaction. Audits only
+  newly-added assignments; SpiceDB is synced off-band via junction-table CDC.
+  """
+  assignRoleToUsers(roleId: ID!, userIds: [ID!]!): BulkRoleMembershipResult!
+
+  """
+  Block List: the role's grants stop applying in these orgs and their entire
+  subtrees (deny > allow; membership rows are kept). Custom roles only.
+  Rejected with BAD_USER_INPUT if the block would remove the CALLER's own admin
+  access (they hold this role, a target covers their home org, and no other role
+  of theirs grants admin access) — another admin must apply it instead.
+  """
+  blockOrganizationsFromRole(orgIds: [ID!]!, roleId: ID!): BulkRoleMembershipResult!
   bulkCreateOrganizations(organizations: [OrganizationInput!]!): [Organization!]!
   bulkDeleteOrganizations(organizationIds: [ID!]!): Void
 
@@ -2194,7 +2296,6 @@ type Mutation {
   debug: Boolean
   deleteAppPlatformReservedDomain(id: ID!): Void
   deleteComponent(id: ID!): Boolean
-  deleteComponentInstance(id: ID!): Boolean!
   deleteConversation(id: ID!): ID!
   deleteConversationMessageVote(id: ID!): ID!
   deleteCrate(id: ID!): ID
@@ -2229,6 +2330,8 @@ type Mutation {
   deleteWorkflows(ids: [ID!]!): [ID]
   duplicateComponent(id: ID!): Component
   excludeUserFromRole(roleId: ID!, userId: ID!): UserRoleExclusion!
+  executeWorkflowFromPage(id: ID!, input: JSON, orgId: ID!, pageId: ID!): JobRequestedResponse
+  executeWorkflowTriggerFromPage(input: JSON, pageId: ID!, triggerInstance: OrgTriggerInstanceInput!, workflowId: ID): JobRequestedResponse
   findAndDeleteUserInvite(email: String!, orgId: ID!): Int
   generateComponent(code: String, configName: ConfigName!, prompt: String!): ComponentGeneratorResponse!
   generateDiffExplanation(modified: JSON!, original: JSON!): DiffExplanationResponse!
@@ -2245,6 +2348,11 @@ type Mutation {
   inherits this role.
   """
   grantRoleToOrganizationMembers(orgId: ID!, roleId: ID!): OrganizationRoleMembership!
+
+  """
+  Batched grant: grant the role to the members of many organizations at once.
+  """
+  grantRoleToOrganizations(orgIds: [ID!]!, roleId: ID!): BulkRoleMembershipResult!
   installPack(name: String, orgId: ID!, packId: ID!): Organization
   killConversation(id: ID!): Boolean!
   killWorkflowExecution(id: ID!): JSON
@@ -2283,6 +2391,9 @@ type Mutation {
   removeAllowedTool(toolName: String!): UserRoboRewstyPreferences!
   removeFavoriteAction(actionId: ID!, userId: ID!): Void
   removeRoleFromUser(roleId: ID!, userId: ID!): Boolean!
+
+  """Batched remove: remove the role from many users in one transaction."""
+  removeRoleFromUsers(roleId: ID!, userIds: [ID!]!): BulkRoleMembershipResult!
   removeUserExclusion(roleId: ID!, userId: ID!): Boolean!
   renderJinja(orgId: ID!, principalOrgId: ID, template: String!, triggerId: ID, vars: JSON): JSON
 
@@ -2297,9 +2408,16 @@ type Mutation {
   revertWorkflowPatch(foreignId: ID, patchId: ID!, workflowId: ID!): JSON!
   revokeDelegatedAccess(organizationId: ID!, userId: ID!): Boolean!
   revokeRoleFromOrganizationMembers(orgId: ID!, roleId: ID!): Boolean!
+
+  """
+  Batched revoke: revoke the role from the members of many organizations at once.
+  """
+  revokeRoleFromOrganizations(orgIds: [ID!]!, roleId: ID!): BulkRoleMembershipResult!
   rotateApiClientSecret(id: ID!): ApiClientSecretRotation!
   runTriggerWithMCP(input: JSON, orgId: ID, workflowId: ID!): JobRequestedResponse
+  runWorkflow(id: ID!, input: JSON, orgId: ID!): JobRequestedResponse
   runWorkflowForOptions(input: JSON!, inputContext: JSON!, orgId: ID!, skipCache: Boolean = false, triggerId: ID, workflowId: ID!): WorkflowOptionsResponse
+  runWorkflowTrigger(input: JSON, triggerInstance: OrgTriggerInstanceInput!, workflowId: ID): JobRequestedResponse
   sendGDAPInvites(customerTenantIds: [ID!]!, displayNamePrefix: String, packConfigId: ID!): JobRequestedResponse
   setFavoriteActions(favoriteActions: [UserFavoriteActionInput!]!, userId: ID!): [UserFavoriteAction!]!
   setFormPermissions(input: SetFormPermissionsInput!): SetFormPermissionsResult!
@@ -2311,12 +2429,12 @@ type Mutation {
   Toggle the org-level Engine Next (Temporal) setting for `orgId`. Cascade is opt-in: when
   `cascade` is true, enabling or disabling propagates the value to every descendant org via LTREE.
   Returns the upserted `organization_feature_preview_settings` rows so Apollo cache can update.
-  
+
   Requires the caller to be an org admin who manages `orgId`. Staff-org callers must have
   support write access to the affected org(s). Gated by `ENABLE_WORKFLOW_TEMPORAL` for `orgId`
   or one of its managing orgs; calls return `TEMPORAL_DISABLED` when the flag is off for that
   org chain.
-  
+
   Authz is enforced inside the resolver (isOrgAdminUser + verifyStaffOrgUserHasOrgWriteAccess +
   per-descendant verifyUserManagesOrg), NOT via a schema `@requires*` directive: org admins —
   not just staff/support — must be able to call this, which is finer-grained than the available
@@ -2344,6 +2462,11 @@ type Mutation {
   testWorkflow(context: ExecuteContextType, id: ID!, input: JSON, orgId: ID!): JobRequestedResponse
   testWorkflowTrigger(input: JSON, triggerInstance: OrgTriggerInstanceInput!, workflowId: ID): JobRequestedResponse
   trackWorkflowEvent(data: JSON, type: WorkflowEventType!, workflowId: ID!): Void
+
+  """
+  Unblock: restores membership-backed (and owning-org) bridges in the freed subtree.
+  """
+  unblockOrganizationsFromRole(orgIds: [ID!]!, roleId: ID!): BulkRoleMembershipResult!
   uninstallPack(name: String, orgIds: [ID!], packId: ID!): Void
   uninstallPackBundle(orgIds: [ID!], packBundleId: ID!): Void
   unlinkClone(id: ID!, objectType: CloneableObjectType!): ID
@@ -2351,7 +2474,6 @@ type Mutation {
   unsyncClone(id: ID!, objectType: CloneableObjectType!): ID
   updateAppPlatformReservedDomain(id: ID!, reservedDomain: AppPlatformReservedDomainUpdateInput!): AppPlatformReservedDomain
   updateComponent(component: UpdateComponentInput!): Component
-  updateComponentInstance(id: ID!, input: ComponentInstanceUpdateInput!): ComponentInstance!
   updateConversation(conversation: ConversationInput!): Conversation!
   updateConversationMessageVote(vote: ConversationMessageVoteInput!): ConversationMessageVote!
   updateCrate(crate: CrateUpdateInput!): Crate
@@ -2440,6 +2562,12 @@ enum OAuthTokenStatusEnum {
   no_metadata
   no_token
   unknown
+}
+
+enum OnDenied {
+  EMPTY
+  ERROR
+  NULL
 }
 
 """
@@ -2703,7 +2831,7 @@ type Organization {
   """
   Number of descendant organizations beneath this org (excludes self), computed by descending
   the LTREE org hierarchy.
-  
+
   LAZY BY CONVENTION: each resolution triggers a full LTREE descent. Frontend MUST only request
   this field from the Engine Next confirmation modal's dedicated query — do NOT include it in
   `getSelectedOrg` or any always-on query, or every selected-org refetch will pay the LTREE cost.
@@ -3872,8 +4000,12 @@ input PermissionAuditLogFiltersInput {
 
 type PermissionAuditLogList {
   entries: [PermissionAuditLogEntry!]!
-  hasMore: Boolean!
-  totalCount: Int!
+  pageInfo: PermissionAuditLogPageInfo!
+}
+
+type PermissionAuditLogPageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
 }
 
 input PermissionCreateInput {
@@ -4024,8 +4156,16 @@ type Query {
   """
   Per-permission grant check resolved through peck-order, matching the path
   spicedbMiddleware enforces. Returns a Boolean[] aligned with the input order.
+
+  Roles blocked in the caller's home org (SC-83897 Block List — the org itself
+  or any ancestor) are ALWAYS filtered out of the caller's roles before
+  checking, so a blocked role's grants don't leak into this probe. `orgId` only
+  NARROWS that further: roles blocked in the supplied org are filtered too. It
+  can never widen the result — naming an org where a role is not blocked does
+  not restore the grants of a role blocked at home. An empty string counts as
+  omitted.
   """
-  checkRolePermissions(permissions: [String!]!): [Boolean!]!
+  checkRolePermissions(orgId: ID, permissions: [String!]!): [Boolean!]!
   checkSpiceDBPermission(where: CheckSpiceDBPermissionInput!): SpiceDBCheckResult
   checkUserManagesOrg(orgId: ID!): Boolean!
   commonlyUsedIntegrationActions(integrationId: ID!, limit: Int = 10, orgId: ID): [CommonlyUsedAction!]!
@@ -4043,8 +4183,10 @@ type Query {
   crate(search: CrateSearchInput, selectedOrgId: ID, where: CrateWhereInput): Crate
   crateCategories(selectedOrgId: ID!): JSON
   crateExportInfo(workflowId: ID!): JSON
+  cratePackConfigStatuses(orgId: ID!, packIds: [ID!]!): [CratePackConfigStatus!]!
   crateTags(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: TagSearchInput, where: TagWhereInput): [Tag!]!
   crateTokenTypes: [String!]!
+  crateUnpackedResources(formClonedFromIds: [ID!], orgId: ID!, templateClonedFromIds: [ID!], triggerClonedFromIds: [ID!], workflowClonedFromIds: [ID!]): CrateUnpackedResources!
   crateUnpackingArgumentSet(where: CrateUnpackingArgumentSetWhereInput): CrateUnpackingArgumentSet
   crateUseCase(where: CrateUseCaseWhereInput): CrateUseCase
   crateUseCases(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: CrateUseCaseSearchInput, where: CrateUseCaseWhereInput): [CrateUseCase!]!
@@ -4096,7 +4238,6 @@ type Query {
   getTestUserSession: User
   getTestUsers(where: GetUserWhereInput): [User!]!
   getTriggerErrorStatus(triggerIds: [ID!]): JSON!
-  home(domain: String!): String!
   hourlyTaskCountByDate(date: String!, orgId: ID!): [TaskCountByHour!]!
   hourlyTimeSavedByDate(date: String!, orgId: ID!): [TimeSavedByHour!]!
 
@@ -4113,7 +4254,7 @@ type Query {
   latestWorkflowExecution(orgId: ID!, status: String, workflowId: ID!): WorkflowExecution
   listDelegatedAccess(organizationId: ID!): [UserDelegatedAccess!]!
   livePage(domain: String, id: ID, path: String!, query: JSON): EncodedPageNodes
-  localReferenceOptions(filterArg: JSON, limit: Int, modelName: LocalReferenceModel!, offset: Int, order: [[String!]!], orgId: ID!, search: String): [DropdownOption!]!
+  localReferenceOptions(filterArg: JSON, limit: Int, modelName: LocalReferenceModel!, offset: Int, order: [[String!]!], orgId: ID!, search: String, valueIn: [String!]): [DropdownOption!]!
   login(domain: String!): Login!
   managedAndSubOrganizations(hasTagIds: [ID], limit: Int, offset: Int, order: [[String!]!] = [["name"]], parentOrgId: ID!, search: OrganizationSearchInput): [Organization!]!
   managedOrgMsGraphTenantIdReferences(orgId: ID!): [ForeignObjectReference!]! @deprecated(reason: "Replaced with microsoftCSPCustomer query")
@@ -4138,7 +4279,7 @@ type Query {
   orgTriggerInstances(limit: Int, offset: Int, order: [[String!]!] = [["createdAt"]], search: OrgTriggerInstanceSearchInput, where: OrgTriggerInstanceWhereInput): [OrgTriggerInstance!]!
   orgVariable(maskSecrets: Boolean, search: OrgVariableSearchInput, where: OrgVariableWhereInput): OrgVariable
   orgVariables(limit: Int, maskSecrets: Boolean, offset: Int, order: [[String!]!] = [["name"]], search: OrgVariableSearchInput, where: OrgVariableWhereInput): [OrgVariable!]!
-  organization(search: OrganizationSearchInput, where: OrganizationWhereInput): Organization
+  organization(pageId: ID, search: OrganizationSearchInput, where: OrganizationWhereInput): Organization
   organizationApiClients(orgId: ID!, pagination: ApiClientListInput): ApiClientList!
 
   """Get a specific organization import by ID."""
@@ -4183,7 +4324,7 @@ type Query {
   """
   pendingWorkflowExecutionsCount(createdSince: String, includeSubOrgs: Boolean, orgId: ID): Int!
   permission(where: PermissionWhereInput): Permission
-  permissionAuditLog(filters: PermissionAuditLogFiltersInput, includeSubOrgs: Boolean, limit: Int = 50, offset: Int = 0, orgId: ID!): PermissionAuditLogList!
+  permissionAuditLog(after: String, filters: PermissionAuditLogFiltersInput, includeSubOrgs: Boolean, orgId: ID!, pageSize: Int = 50): PermissionAuditLogList!
   permissions(where: PermissionWhereInput): [Permission!]!
 
   """
@@ -4202,7 +4343,41 @@ type Query {
   resourceTypesByPack: [PackResourceTypesContainer!]!
   roboRewstyConfigOption(where: RoboRewstyConfigWhere): RoboRewstyConfigValue!
   roboRewstyConfigOptions(where: RoboRewstyConfigWhere): [RoboRewstyConfigValue!]!
+  roboRewstyWorkflowDraftContent(orgId: ID!, workflowId: ID!): WorkflowDraftStateMetadata
   roboRewstyWorkflowDraftState(orgId: ID!, workflowId: ID!): WorkflowDraftStateMetadata
+
+  """
+  Batched explicit-block counts for the "Block List (N)" tab labels, scoped to
+  the caller's managed subtree.
+  """
+  roleOrganizationExclusionCounts(orgId: ID!, roleIds: [ID!]!): [RoleOrganizationCount!]!
+
+  """
+  Org ids the role is blocked from — explicit blocks PLUS every org inherited
+  through a blocked org's subtree — for client-side candidate filtering.
+
+  This is the ids-only counterpart to `roleOrganizationExclusions`. The
+  Organizations tab needs only the blocked-id SET, to keep its "Add
+  Organizations" modal from ever offering an org the Block List excludes;
+  fetching the full row payload for that (org records, parent names, and the
+  membership chip join) is pure fan-out. Always subtree-inclusive, since a
+  block anywhere in a subtree closes the candidate pool for that whole subtree.
+
+  Scoped to the orgs the CALLER manages, symmetrically with
+  `roleOrganizationExclusions`.
+  """
+  roleOrganizationExclusionOrgIds(roleId: ID!): [ID!]!
+
+  """
+  Orgs explicitly blocked on the role's Block List, scoped to the orgs the
+  CALLER manages (hierarchy or delegation) — blocks recorded outside the
+  caller's visibility are omitted, matching
+  `roleOrganizationExclusionCounts`. When `includeSubOrgs` is true,
+  descendants of each blocked org are included with `isDirectAssignment=false`
+  (they are implicitly blocked via subtree inheritance and are read-only in
+  the UI).
+  """
+  roleOrganizationExclusions(includeSubOrgs: Boolean, limit: Int, offset: Int, roleId: ID!): [RoleOrganizationRow!]!
 
   """
   Batched membership counts for the role list sidebar, scoped to the
@@ -4662,6 +4837,12 @@ type SourceField {
   id: ID!
   index: Int
   schema: JSON
+}
+
+enum SpendState {
+  CAPPED
+  NORMAL
+  WARNING
 }
 
 type SpiceDBCheckResult {
@@ -5528,13 +5709,16 @@ type Workflow {
 
 type WorkflowDraftStateMetadata {
   draftHash: String
+  generation: String
   revision: Int
+  workflow: JSON
 }
 
 type WorkflowDraftSyncResponse {
   didSucceed: Boolean!
   draftHash: String
   error: String
+  errorStatus: Int
   isFinished: Boolean!
   revision: Int
 }
@@ -5572,6 +5756,7 @@ type WorkflowExecution {
 }
 
 type WorkflowExecutionConductor {
+  dehydrationFailed: Boolean
   errors: [JSON]
   executionEngine: String
   graph: JSON
@@ -5591,7 +5776,7 @@ type WorkflowExecutionConductorState {
 }
 
 input WorkflowExecutionSearchInput {
-  createdAt: string_comparison_exp
+  createdAt: timestamp_comparison_exp
   id: id_comparison_exp
   numAwaitingResponseTasks: int_comparison_exp
   orgId: id_comparison_exp
@@ -6019,4 +6204,22 @@ input string_comparison_exp {
   _nin: [String!]
   _nlike: String
   _substr: String
+}
+
+"""
+Expression to compare an ISO-8601 timestamp field. Exposes only operators that a
+@filterAsField-mapped field can translate to its UUIDv7 target (substring/pattern
+operators are intentionally omitted so callers cannot land on an untranslatable,
+column-less path). All fields are combined with logical 'AND'.
+"""
+input timestamp_comparison_exp {
+  _eq: String
+  _gt: String
+  _gte: String
+  _in: [String!]
+  _lt: String
+  _lte: String
+  _ne: String
+  _neq: String
+  _nin: [String!]
 }

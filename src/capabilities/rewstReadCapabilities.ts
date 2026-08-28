@@ -226,15 +226,21 @@ const resolveReferenceInputSchema = z.object({
 		)
 		.describe('Which kind of Rewst object to resolve.'),
 	search: optionalStringField().describe('Optional case-insensitive name substring filter.'),
+	valueIn: z
+		.array(requiredStringField('valueIn'))
+		.min(1)
+		.max(MAX_REFERENCE_LIMIT)
+		.optional()
+		.describe('Optional exact reference ids to resolve to labels (up to 100), including form field selections.'),
 	limit: optionalClampedInt(MAX_REFERENCE_LIMIT).describe(
-		`Max references to return (default ${DEFAULT_REFERENCE_LIMIT}, max ${MAX_REFERENCE_LIMIT}).`,
+		`Max references to return (default ${DEFAULT_REFERENCE_LIMIT}, or the number of valueIn ids when valueIn is supplied; max ${MAX_REFERENCE_LIMIT}).`,
 	),
 });
 const resolveReferenceSpec: ToolSpec = {
 	name: 'buddy_resolve_reference',
-	args: '{"orgId": string, "modelType": string, "search"?: string, "limit"?: number}',
+	args: '{"orgId": string, "modelType": string, "search"?: string, "valueIn"?: string[], "limit"?: number}',
 	description:
-		'Resolve Rewst object names to ids for one organization and a model type (Workflow, Template, Trigger, Form, Organization, User, Role, PackConfig, Site, Page, Crate, CustomDatabase, TemplateExport). Optionally filter by a case-insensitive name substring. Returns matching options as name (id). Use this when you have a name and need the id.',
+		'Resolve Rewst object names to ids for one organization and a model type (Workflow, Template, Trigger, Form, Organization, User, Role, PackConfig, Site, Page, Crate, CustomDatabase, TemplateExport). Optionally filter by a case-insensitive name substring or valueIn for exact reference ids. Returns matching options as name (id). Use this when you have a name and need the id, or selected ids and need their labels.',
 	inputSchema: toInputSchema(resolveReferenceInputSchema),
 };
 
@@ -372,8 +378,8 @@ const WORKFLOW_QUERY = `query RewstBuddyMcpWorkflow($id: ID!) {
 	}
 }`;
 
-const RESOLVE_REFERENCE_QUERY = `query RewstBuddyMcpResolveReference($orgId: ID!, $modelName: LocalReferenceModel!, $search: String, $limit: Int) {
-  localReferenceOptions(modelName: $modelName, orgId: $orgId, search: $search, limit: $limit) {
+const RESOLVE_REFERENCE_QUERY = `query RewstBuddyMcpResolveReference($orgId: ID!, $modelName: LocalReferenceModel!, $search: String, $limit: Int, $valueIn: [String!]) {
+  localReferenceOptions(modelName: $modelName, orgId: $orgId, search: $search, limit: $limit, valueIn: $valueIn) {
     label
     value
   }
@@ -685,10 +691,17 @@ async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx:
 }
 
 async function runResolveReference(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { orgId, modelType, search, limit: rawLimit } = parseCapabilityInput(resolveReferenceInputSchema, input);
-	const limit = rawLimit ?? DEFAULT_REFERENCE_LIMIT;
+	const {
+		orgId,
+		modelType,
+		search,
+		valueIn,
+		limit: rawLimit,
+	} = parseCapabilityInput(resolveReferenceInputSchema, input);
+	const limit = rawLimit ?? valueIn?.length ?? DEFAULT_REFERENCE_LIMIT;
 	const variables: Record<string, unknown> = { orgId, modelName: modelType, limit };
 	if (search) variables.search = search;
+	if (valueIn !== undefined) variables.valueIn = valueIn;
 	const data = await rawGraphqlOrThrow(ctx.session, RESOLVE_REFERENCE_QUERY, variables);
 	const options = ((data as { localReferenceOptions?: unknown[] } | undefined)?.localReferenceOptions ?? []) as {
 		label?: string;

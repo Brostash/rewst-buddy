@@ -153,6 +153,38 @@ suite('Unit: McpActions', () => {
 	});
 
 	suite('listTools()', () => {
+		test('form reads are advertised by default and typed form writes do not require dangerous GraphQL', () => {
+			const readNames = listTools(settings()).map(tool => tool.name);
+			const writeNames = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
+			assert.ok(readNames.includes('buddy_get_form'));
+			assert.ok(readNames.includes('buddy_validate_form'), 'semantic validation is a read tool');
+			for (const name of [
+				'buddy_create_form',
+				'buddy_update_form',
+				'buddy_add_form_field',
+				'buddy_delete_form',
+				'buddy_set_form_tags',
+				'buddy_test_form_options',
+				'buddy_create_trigger',
+			]) {
+				assert.ok(!readNames.includes(name), name);
+				assert.ok(writeNames.includes(name), name);
+			}
+			assert.ok(!writeNames.includes('buddy_graphql_mutate'));
+		});
+
+		test('nothing that can execute an option generator is exposed as a read tool', () => {
+			const executing = ['buddy_test_form_options'];
+			for (const tool of listTools(settings())) {
+				assert.ok(!executing.includes(tool.name), `${tool.name} must not be readable without write tools`);
+			}
+			// The read tools that touch generator configuration say plainly that they
+			// do not run it, so a model does not reach for an executing tool instead.
+			const validate = listTools(settings()).find(tool => tool.name === 'buddy_validate_form');
+			assert.match(validate?.description ?? '', /never executes an option generator/);
+			const get = listTools(settings()).find(tool => tool.name === 'buddy_get_form');
+			assert.match(get?.description ?? '', /never runs an option generator/);
+		});
 		test('exposes the read tools and hides the GraphQL chat/write tools', () => {
 			const names = listTools(settings()).map(tool => tool.name);
 			assert.ok(names.includes('buddy_list_orgs'));
@@ -171,6 +203,41 @@ suite('Unit: McpActions', () => {
 	});
 
 	suite('callTool()', () => {
+		for (const name of [
+			'buddy_create_form',
+			'buddy_update_form',
+			'buddy_add_form_field',
+			'buddy_delete_form',
+			'buddy_set_form_tags',
+			'buddy_test_form_options',
+			'buddy_create_trigger',
+		]) {
+			test(`${name} is rejected before network access when disabled or outside working scope`, async () => {
+				const { session, wrapper } = useSession();
+				useRawGraphqlWrapper(session, wrapper);
+				const request = {
+					name,
+					arguments: {
+						orgId: 'org-1',
+						formId: 'form-1',
+						workflowId: 'wf-1',
+						name: 'Test',
+						operation: 'replace',
+						tagIds: [],
+						field: { name: 'a', type: 'TEXT_INPUT' },
+					},
+				};
+				await assert.rejects(
+					() => callTool(request, settings()),
+					(error: unknown) => error instanceof McpError && error.code === 'write_disabled',
+				);
+				await assert.rejects(
+					() => callTool(request, settings({ enableWriteTools: true })),
+					(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
+				);
+				assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
+			});
+		}
 		test('buddy_list_orgs enumerates orgs across active sessions without an orgId', async () => {
 			useSession('org-1', 'Acme');
 			const result = await callTool({ name: 'buddy_list_orgs' }, settings());
@@ -438,6 +505,24 @@ suite('Unit: McpActions', () => {
 				(error: unknown) => error instanceof McpError && error.code === 'workflow_out_of_scope',
 			);
 		});
+
+		for (const name of ['buddy_test_form_options', 'buddy_create_trigger']) {
+			test(`${name} names its workflow, so a workflow outside the working scope is rejected`, async () => {
+				const { session, wrapper } = useSession('org-1');
+				useRawGraphqlWrapper(session, wrapper);
+				WorkingScopeManager.setOrgs(['org-1']);
+				WorkingScopeManager.setWorkflows(['wf-allowed']);
+
+				await assert.rejects(
+					callTool(
+						{ name, arguments: { orgId: 'org-1', workflowId: 'wf-other', name: 'Test' } },
+						settings({ enableWriteTools: true }),
+					),
+					(error: unknown) => error instanceof McpError && error.code === 'workflow_out_of_scope',
+				);
+				assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
+			});
+		}
 
 		test('a write to a pinned working workflow passes the boundary guard', async () => {
 			const { session, wrapper } = useSession('org-1', 'Acme');

@@ -163,7 +163,7 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
 - `rewst-buddy.mcp.enable` exposes all read capabilities: `buddy_list_orgs`, `buddy_search_templates`, `buddy_get_template`, `buddy_list_workflows`, `buddy_get_workflow`, `buddy_workflow_lint`, `buddy_graphql_query`, `buddy_graphql_schema`, `buddy_search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_workflow_diagnose`, `buddy_render_jinja`, `buddy_action_search`, `buddy_workflow_impact`, `buddy_search_crates`, `buddy_get_jinja_filter_docs`, and `buddy_result_read`.
-- `rewst-buddy.mcp.enableWriteTools` adds the write tools that change Rewst data: workflow editing, auto-layout, and runs; workflow create/delete; template create, edit, rename, delete, and sync; and org-variable, tag, and trigger changes.
+- `rewst-buddy.mcp.enableWriteTools` adds the write tools that change Rewst data: workflow editing, auto-layout, and runs; workflow create/delete; template create, edit, rename, delete, and sync; form create, update, delete, and tags; and org-variable, tag, and trigger changes.
 - `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `buddy_graphql_mutate`, the raw GraphQL mutation tool.
 
 The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement is the query/mutate pair. Workflow edits, auto-layout, runs, and raw GraphQL mutations still require approval inside VS Code before anything is sent to Rewst. `buddy_graphql_mutate` is intentionally separate from `enableWriteTools` because it can run arbitrary mutations against the live org.
@@ -187,6 +187,128 @@ Oversized Rewst Buddy results are cached in memory and returned with a preview p
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
 
 **Multiple VS Code windows:** the MCP server binds a single localhost port, so only one window can host it — the first window to bind owns the `/mcp` endpoint, and the server exposes **that window's** active Rewst sessions. Other windows still try to start the server but lose the port bind; their sessions are not reachable over MCP while another window owns it. Tools that take an `orgId` resolve it among the owning window's sessions, so to expose a particular org through MCP, make sure that org's session is signed in in the window that owns the server (close the owning window to let another take over the port).
+
+### Forms through MCP
+
+Use `buddy_list_forms` to find a form by name, with `search`, `limit`, and `offset`
+for larger catalogs. `buddy_get_form` returns its definition: metadata, fields
+in index order, field configuration and conditions, tags, and connected triggers.
+
+With write tools enabled and the organization in working scope:
+
+| Tool                      | Behavior                                                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `buddy_create_form`       | Create a named form, optionally with fields and conditions.                                                             |
+| `buddy_update_form`       | Update metadata or replace the field list. Omitted properties are unchanged.                                            |
+| `buddy_add_form_field`    | Add one field to an existing form, leaving every other field untouched.                                                 |
+| `buddy_delete_form`       | Permanently delete the form after fresh approval.                                                                       |
+| `buddy_set_form_tags`     | Add/remove tags while retaining others, or replace the exact set. `tagIds: []` with `operation: "replace"` clears tags. |
+| `buddy_test_form_options` | Run an option-generator workflow once and report the option count, observed key names, and label/value-key checks.      |
+| `buddy_create_trigger`    | Create the trigger that submits a form, or that an option generator is invoked through.                                 |
+
+**Field replacement is destructive:** when updating `fields`, send the complete
+desired list, retaining existing field IDs. Omit an ID for a new field; `fields: []`
+removes every field. Read the form immediately before editing and preserve any
+configuration and conditions you are not changing. Updates and tag changes
+request fresh approval in VS Code.
+
+Form descriptions are limited to 255 characters. Put longer instructions in
+Text/Markdown fields instead.
+
+Field `schema` is Rewst configuration JSON, such as
+`{"name":"company","type":"string","label":"Company","required":true}` for a
+`TEXT_INPUT`. Condition `conditionType` is a Rewst mode, not an equality operator:
+existing forms use values such as `default` and `jinja`, while `equals` is rejected
+by Rewst. Copy the mode and condition shape from `buddy_get_form` when editing.
+See Rewst's [conditional field documentation](https://docs.rewst.help/documentation/automations/forms/form-best-practices)
+for form logic concepts.
+
+#### Typed fields instead of raw JSON
+
+`buddy_create_form` and `buddy_update_form` also accept `typedFields`, a
+high-level description of each field that is compiled into the canonical Rewst
+field JSON for you. A typed field names itself (`name`, which is also the
+workflow input name), its `type`, and optional `label`, `description`,
+`required`, `default`, `placeholder`, static `options`, `conditions`, and
+`dynamicOptions`. Fields reference each other by `name`; the compiler resolves
+those to the field IDs Rewst stores.
+
+Field IDs must be Rewst UUIDs. New fields may omit an ID. When editing an
+existing field, reuse the ID returned by `buddy_get_form`.
+
+`dynamicOptions` is the workflow-generated dropdown: `workflowId`, an optional
+`triggerId`, optional `labelKey`/`valueKey` (default `label`/`value`), static
+`input`, and `inputFromFields` mapping a generator input to another field's
+`name`. Anything else is rejected by name — a property Rewst does not read, such
+as `labelField` or `dependsOn`, is reported with the property to use instead
+rather than being silently ignored. `fields` (raw Rewst JSON) still works and is
+never rewritten, so an existing definition round-trips losslessly; pass one or
+the other, not both.
+
+#### Validation, and what a successful save does not prove
+
+Every form write is checked semantically before anything is sent, and
+`buddy_validate_form` runs the same checks on a stored form or a draft without
+writing or executing anything. The checks are:
+
+- field names are usable as workflow input names and unique; field IDs unique;
+  field types supported;
+- conditions and `inputFromFields` mappings reference fields that exist on the
+  form, and no field depends on another in a cycle;
+- each referenced workflow exists, is an `OPTION_GENERATOR`, is visible to the
+  form's organization (an explicit share — being a child of the workflow's org
+  is not enough), declares the inputs the field maps into it and an `options`
+  output, and has a compatible trigger. An omitted `triggerId` is filled in only
+  when the choice is unambiguous; otherwise the candidates are listed.
+
+Results separate errors from warnings, list the checks that **passed**, and list
+the checks that could not be run and why — an empty result is never reported as
+a pass. A write with semantic errors is refused before approval.
+
+After a write succeeds, the tool reads the form back and compares it with what
+was requested. A mismatch or a failed read-back returns the saved ID with a
+`verification` block explaining the difference; the write was **not** rolled
+back, so correct it with another update rather than creating a second form.
+
+`buddy_get_form` adds an `interpreted` view naming each field's option source
+and resolving referenced workflows and triggers, alongside the unchanged raw
+`fields`. Pass `interpret: false` to skip it.
+
+#### Actually testing a dropdown
+
+Storing `enumSourceWorkflow` does not run anything, so it cannot tell you
+whether a dropdown will populate. `buddy_test_form_options` runs the generator
+once, on purpose, and reports how many options came back, which keys they carry,
+and whether every option has the expected label and value keys. An empty result
+is reported as inconclusive. It is the only form tool that executes anything:
+reads and validation never do. It requires write tools, the org **and the
+workflow** in working scope, and fresh approval on every call, and it reports
+only key names and counts — never option labels, values, or the form values you
+supplied.
+
+To build a generator from scratch, `buddy_create_workflow` accepts `type`,
+`input` and `output`, so an `OPTION_GENERATOR` can be created with its declared
+contract in place; it refuses one with no `options` output. It only ever creates
+a new workflow — it never converts, clones, activates or re-permissions an
+existing one.
+
+#### Connecting a form to a workflow
+
+Creating a form does not submit it or grant access permissions. `buddy_create_trigger`
+makes the connection: it resolves the trigger type against the live catalogue by
+id or ref (inferring it only when a form is named and exactly one
+form-submission type exists), verifies the workflow and form belong to the org,
+keeps the trigger's `formId` and `parameters.form_id` consistent, and reads the
+saved trigger back to confirm the association. **New triggers are created
+disabled** unless you pass `enabled: true`, which the approval prompt states
+explicitly — a trigger is what turns a passive form into an execution entry
+point. Editing existing triggers stays with `buddy_set_trigger_enabled`,
+`buddy_set_trigger_tags` and `buddy_set_trigger_activation`.
+
+Field names become workflow input names; additional fields need corresponding
+workflow logic before they have operational effects. Use `buddy_get_trigger` to
+inspect an existing connection. `buddy_resolve_reference` also accepts `valueIn`
+to resolve selected reference IDs to labels, including form references.
 
 ### Working scope
 

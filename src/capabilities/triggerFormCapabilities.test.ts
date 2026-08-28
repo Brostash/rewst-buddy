@@ -41,8 +41,12 @@ suite('Unit: triggerFormCapabilities', () => {
 	});
 
 	test('buddy_list_forms derived schema has orgId required', () => {
-		const schema = cap('buddy_list_forms').spec.inputSchema as { required: string[] };
+		const schema = cap('buddy_list_forms').spec.inputSchema as {
+			required: string[];
+			properties: Record<string, unknown>;
+		};
 		assert.ok(schema.required.includes('orgId'));
+		assert.ok('search' in schema.properties);
 		assert.strictEqual(cap('buddy_list_forms').spec.args, JSON.stringify(schema));
 	});
 
@@ -103,7 +107,31 @@ suite('Unit: triggerFormCapabilities', () => {
 		const output = await cap('buddy_list_forms').run({ orgId: 'org-1', limit: 25 }, ctx);
 
 		assert.ok(calls[0].query.includes('forms('));
+		assert.match(calls[0].query, /order:\s*\[\["name","ASC"\],\["id","ASC"\]\]/);
 		assert.ok(output.includes('Client intake (form-1)'));
+	});
+
+	test('buddy_list_forms maps a name search to FormSearchInput', async () => {
+		const { ctx, calls } = fakeCtx({ data: { forms: [] } });
+
+		await cap('buddy_list_forms').run({ orgId: 'org-1', search: ' intake ', limit: 25 }, ctx);
+
+		assert.deepStrictEqual(calls[0].variables, {
+			orgId: 'org-1',
+			limit: 25,
+			search: { name: { _ilike: '%intake%' } },
+		});
+	});
+
+	test('buddy_list_forms pages beyond the first limit and rejects invalid offsets', async () => {
+		const { ctx, calls } = fakeCtx({ data: { forms: [] } });
+		await cap('buddy_list_forms').run({ orgId: 'org-1', offset: 200, limit: 50 }, ctx);
+		assert.strictEqual(calls[0].variables?.offset, 200);
+		assert.match(calls[0].query, /offset:\s*\$offset/);
+		for (const offset of [-1, 1.5, '200', null]) {
+			await assert.rejects(() => cap('buddy_list_forms').run({ orgId: 'org-1', offset }, ctx));
+		}
+		assert.strictEqual(calls.length, 1);
 	});
 
 	test('buddy_list_tags uses tags query and formats tag rows', async () => {

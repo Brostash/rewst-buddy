@@ -178,6 +178,65 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
+	test('buddy_resolve_reference forwards the current schema valueIn filter and validates ids', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { localReferenceOptions: [] } } });
+		const capability = getCapability('buddy_resolve_reference')!;
+		const ctx = { session, orgId: 'org-1', sessions: [session] };
+		const valueIn = Array.from({ length: 26 }, (_, index) => `form-${index + 1}`);
+		await capability.run({ orgId: 'org-1', modelType: 'Form', valueIn }, ctx);
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.deepStrictEqual(calls[0].variables.variables.valueIn, valueIn);
+		assert.strictEqual(calls[0].variables.variables.limit, 26, 'valueIn defaults the result limit to its id count');
+		assert.match(calls[0].variables.query, /valueIn:\s*\$valueIn/);
+		for (const valueIn of [[], [''], [42], 'form-1']) {
+			await assert.rejects(() => capability.run({ orgId: 'org-1', modelType: 'Form', valueIn }, ctx));
+		}
+		assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 1);
+	});
+
+	test('buddy_resolve_reference preserves an explicit limit when valueIn is supplied', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { localReferenceOptions: [] } } });
+		const capability = getCapability('buddy_resolve_reference')!;
+		await capability.run(
+			{ orgId: 'org-1', modelType: 'Form', valueIn: ['form-1', 'form-2'], limit: 1 },
+			{
+				session,
+				orgId: 'org-1',
+				sessions: [session],
+			},
+		);
+		assert.strictEqual(wrapper.getCallsFor('rawGraphql')[0].variables.variables.limit, 1);
+	});
+
+	test('buddy_resolve_reference caps an explicit limit when valueIn is supplied', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { localReferenceOptions: [] } } });
+		const capability = getCapability('buddy_resolve_reference')!;
+		await capability.run(
+			{ orgId: 'org-1', modelType: 'Form', valueIn: ['form-1'], limit: 999 },
+			{
+				session,
+				orgId: 'org-1',
+				sessions: [session],
+			},
+		);
+		assert.strictEqual(wrapper.getCallsFor('rawGraphql')[0].variables.variables.limit, 100);
+	});
+
+	test('buddy_resolve_reference uses its standard default without valueIn', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { localReferenceOptions: [] } } });
+		const capability = getCapability('buddy_resolve_reference')!;
+		await capability.run({ orgId: 'org-1', modelType: 'Form' }, { session, orgId: 'org-1', sessions: [session] });
+		assert.strictEqual(wrapper.getCallsFor('rawGraphql')[0].variables.variables.limit, 25);
+	});
+
 	test('buddy_find_executions_by_variable scans conductor input and matches name and value', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);

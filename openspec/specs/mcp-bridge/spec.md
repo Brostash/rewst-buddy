@@ -1545,3 +1545,395 @@ is surfaced rather than hidden.
 - **WHEN** the diff is computed
 - **THEN** the field is not reported as changed — only a genuine value change
   appears in the diff
+
+### Requirement: Resolve selected reference values
+
+`buddy_resolve_reference` SHALL accept an optional `valueIn` list to resolve
+specified reference ids. When `valueIn` is supplied and `limit` is omitted, the
+effective limit SHALL equal the number of supplied ids. Without `valueIn`, the
+default limit SHALL remain 25. An explicitly supplied valid limit SHALL take
+precedence in either case.
+
+#### Scenario: Resolve more selected ids than the ordinary default
+
+- **WHEN** `buddy_resolve_reference` receives a `valueIn` list longer than 25 and
+  no limit
+- **THEN** the request SHALL use the list length as its limit
+- **WHEN** it receives no `valueIn` and no limit
+- **THEN** it SHALL use the default limit of 25
+- **WHEN** it receives an explicit valid limit
+- **THEN** it SHALL use that limit
+
+### Requirement: Dedicated form CRUD tools
+
+The system SHALL expose dedicated form tools for reading, creating, updating,
+and deleting forms without requiring callers to compose arbitrary GraphQL.
+`buddy_list_forms` SHALL accept an optional case-insensitive name search and
+non-negative offset, and SHALL order results by name ascending and then id
+ascending.
+`buddy_get_form` SHALL return form metadata together with fields, field
+conditions, tags, and connected triggers. `buddy_create_form` and
+`buddy_update_form` SHALL accept Rewst form-field definitions, including field
+schemas and conditions. Every write SHALL use the standard working-scope and
+VS Code approval gates, and by-id writes SHALL verify that the form belongs to
+the requested organization before mutation. `buddy_update_form`,
+`buddy_delete_form`, and `buddy_set_form_tags` SHALL always request fresh
+approval. Form descriptions SHALL be limited to 255 characters before any
+request, matching the live resolver's storage constraint.
+
+#### Scenario: Create a form with fields
+
+- **GIVEN** a writable organization is in the effective working scope
+- **WHEN** `buddy_create_form` is called with a name and form-field definitions
+- **AND** the user approves the VS Code prompt
+- **THEN** the system SHALL create the form in that organization
+- **AND** SHALL return the created form id and name
+
+#### Scenario: Find a form by name
+
+- **WHEN** `buddy_list_forms` is called with a name search
+- **THEN** the query SHALL remain constrained to the requested organization
+- **AND** SHALL return only forms whose names match case-insensitively
+
+#### Scenario: List forms in deterministic order
+
+- **WHEN** `buddy_list_forms` is called with search and offset arguments
+- **THEN** its request SHALL retain those arguments
+- **AND** SHALL request name ascending followed by id ascending ordering
+
+#### Scenario: Read a complete form definition
+
+- **WHEN** `buddy_get_form` is called with a form id and its owning organization
+- **THEN** the result SHALL include the form metadata, fields, field conditions,
+  tags, and connected triggers
+
+#### Scenario: Reject a cross-org form update
+
+- **GIVEN** a form id that does not belong to the requested organization
+- **WHEN** `buddy_update_form` is called for that id
+- **THEN** the system SHALL reject the request before approval or mutation
+
+#### Scenario: Delete requires fresh approval
+
+- **GIVEN** an earlier mutation approval exists for a form
+- **WHEN** `buddy_delete_form` is called for that form
+- **THEN** the system SHALL request a new VS Code approval
+- **AND** SHALL not delete the form unless that approval is granted
+
+#### Scenario: Replace fields explicitly without losing omitted metadata
+
+- **WHEN** an update omits `fields`
+- **THEN** the stored field list SHALL remain unchanged
+- **WHEN** an update supplies `fields`, including an empty array
+- **THEN** the approval summary SHALL identify the replacement count
+- **AND** the supplied list SHALL replace the stored list
+- **AND** nullable conditions and nested option-generator input mappings SHALL
+  be preserved without changing their values
+
+#### Scenario: Merge form tags after approval
+
+- **WHEN** `buddy_set_form_tags` adds, removes or replaces tags
+- **THEN** the form SHALL be read again after fresh approval
+- **AND** every requested tag SHALL be verified in the owning organization
+- **AND** add/remove SHALL preserve unrelated tags; replace SHALL use the exact
+  supplied set, including an empty set
+- **AND** the result SHALL report the before and after tag IDs
+
+#### Scenario: Void deletion response
+
+- **WHEN** the server returns `deleteForm: null` with no GraphQL errors
+- **THEN** deletion SHALL return the verified requested form ID
+- **WHEN** the response lacks the `deleteForm` field entirely
+- **THEN** the tool SHALL report that deletion could not be confirmed
+
+### Requirement: Shared form semantic compilation and validation
+
+The system SHALL provide one semantic layer for Rewst forms, used by every form
+surface. It SHALL accept typed, high-level field definitions and compile them
+into canonical Rewst field JSON — including `schema.name`/`type`, labels, static
+options, and a `schema.enumSourceWorkflow` block carrying the workflow id,
+trigger id, label and value keys, static `input`, and `inputFromFields` mappings
+with their reference defaults. Typed fields SHALL reference one another by
+`name`, resolved to stored field ids at compile time. Raw Rewst field JSON SHALL
+remain accepted and SHALL be validated without being rewritten, so existing
+Rewst metadata the system does not model is never silently discarded.
+
+Validation SHALL cover field names, field ids, field types, conditions,
+generator references and field dependency cycles, and SHALL report errors,
+warnings, the checks that passed, and the checks that could not be run, both per
+field and overall. A check that later produces a compiler error SHALL NOT remain
+reported as passed.
+
+#### Scenario: Compile a workflow-generated dropdown
+
+- **WHEN** a typed `SELECT`, `MULTISELECT` or `RADIO` field declares
+  `dynamicOptions` naming a workflow and mapping a generator input from another
+  field's `name`
+- **THEN** the compiled field SHALL carry `schema.enumSourceWorkflow` with that
+  workflow id, the default label and value keys when none were given, a static
+  `input` slot for every mapped input, and an `inputFromFields` entry resolving
+  the source field's `name` to its id with the default active/required flags
+
+#### Scenario: Reject an obsolete dynamic-options property
+
+- **WHEN** a `dynamicOptions` object carries a property Rewst does not read, such
+  as `labelField` or `dependsOn`
+- **THEN** the request SHALL be rejected before any validation or network access
+- **AND** the message SHALL name the property path and the canonical property to
+  use instead
+- **WHEN** the property is not recognised at all
+- **THEN** the message SHALL name the path and list the supported properties
+
+#### Scenario: Reject an unknown typed field property
+
+- **WHEN** a typed field carries a property that is not part of the typed field
+  contract
+- **THEN** the request SHALL be rejected naming that property, rather than the
+  property being ignored
+
+#### Scenario: Reject unresolvable references and cycles
+
+- **WHEN** a condition or a generator input mapping names a field that is not on
+  the form
+- **THEN** validation SHALL report an error identifying the field and the path
+- **WHEN** two fields supply each other's generator inputs
+- **THEN** validation SHALL report a dependency cycle naming the fields involved
+
+#### Scenario: Field ids are UUIDs
+
+Rewst stores `FormField.id` in a UUID column and inserts a supplied value
+directly, so a non-UUID id fails the write rather than being normalized.
+
+- **WHEN** a typed field is compiled and another field references it by `name`
+- **THEN** it SHALL be assigned a freshly generated UUID
+- **AND** the reference SHALL resolve to that UUID
+- **WHEN** no other field references it and the caller supplied no id
+- **THEN** the compiled field SHALL carry no id, so Rewst assigns one
+- **WHEN** a caller supplies a field id that is not a UUID
+- **THEN** validation SHALL reject it before any request, naming the id and
+  saying to omit it or use the id returned by `buddy_get_form`
+
+#### Scenario: Preserve unmodelled stored field metadata
+
+- **GIVEN** a stored field whose schema carries properties the system does not
+  model
+- **WHEN** that field is validated or written back as part of another operation
+- **THEN** those properties SHALL be preserved unchanged
+
+### Requirement: Referenced option-generator workflows are resolved live
+
+Before a form is saved or reported as valid, the system SHALL resolve every
+workflow a field sources its options from, in the form's organization context.
+It SHALL verify the workflow exists, is of type `OPTION_GENERATOR`, declares the
+inputs the field supplies, declares an `options` output, and is actually visible
+to that organization. Visibility SHALL require the workflow to belong to the
+organization or to be explicitly shared with it; membership of a parent
+organization SHALL NOT by itself be treated as visibility. A trigger the field
+names SHALL be verified to belong to that workflow and to a compatible owner.
+An omitted trigger SHALL be resolved only when exactly one compatible choice
+exists; otherwise the system SHALL report the candidates. Distinct generator
+references MAY be resolved concurrently, but their diagnostics SHALL remain in
+form-reference order and SHALL be attributed to the referenced field's input
+path, retaining a `.triggerId` suffix when that is the failing value.
+
+#### Scenario: Reject a workflow that cannot generate options
+
+- **WHEN** a field references a workflow that does not exist, is not an
+  `OPTION_GENERATOR`, is not visible to the organization, does not declare a
+  mapped input, or declares no `options` output
+- **THEN** the check SHALL fail with a message naming the workflow and the reason
+- **AND** the checks that could not be evaluated as a result SHALL be reported as
+  not run, rather than omitted or reported as passed
+
+#### Scenario: Preserve per-field diagnostic paths and order
+
+- **GIVEN** multiple fields reference generators, including duplicate references
+- **WHEN** live generator checks return an error or warning for a later field
+- **THEN** that diagnostic SHALL name the later field's input path, including
+  `.triggerId` when applicable
+- **AND** results SHALL remain ordered by the form's references even when checks
+  are resolved concurrently
+
+#### Scenario: Resolve an omitted generator trigger
+
+- **WHEN** a field names no `triggerId` and the workflow has exactly one
+  compatible trigger
+- **THEN** that trigger SHALL be resolved and reported
+- **WHEN** the workflow has several compatible triggers
+- **THEN** the check SHALL fail and SHALL list the candidate triggers
+- **WHEN** the workflow has no trigger at all
+- **THEN** the check SHALL fail and SHALL say a trigger must be created
+
+### Requirement: Form writes are validated before and verified after persistence
+
+`buddy_create_form`, `buddy_update_form` and `buddy_add_form_field` SHALL run the
+shared semantic validation before requesting approval, and SHALL refuse a
+definition with semantic errors without prompting or mutating. After a
+successful mutation each SHALL read the saved form back and compare it with the
+intended definition. A mismatch or a failed read-back SHALL be reported as a
+distinct verification outcome that still returns the saved id, SHALL NOT imply
+the write was rolled back, and SHALL NOT suggest creating the resource again.
+
+#### Scenario: A broken definition never reaches approval
+
+- **WHEN** a create or update supplies a field whose generator workflow is not an
+  option generator
+- **THEN** the request SHALL fail before the approval prompt
+- **AND** no mutation SHALL be sent
+
+#### Scenario: Read-back mismatch after a successful write
+
+- **GIVEN** a form write that the server accepted
+- **WHEN** the form read back afterwards differs from the requested definition
+- **THEN** the result SHALL report a verification mismatch with the differences
+- **AND** SHALL include the saved form id
+- **AND** SHALL state that the write was not rolled back
+
+#### Scenario: Read-back failure after a successful write
+
+- **WHEN** the write succeeded but reading the form back fails
+- **THEN** the result SHALL report the write as unverified rather than failed
+- **AND** SHALL include the saved id and the underlying read error
+
+### Requirement: Incremental form field addition
+
+The system SHALL expose `buddy_add_form_field`, adding exactly one field to an
+existing form without requiring the caller to reconstruct the field list. Every
+other field SHALL be written back unchanged, retaining its id, schema and
+conditions including their field references, and server-only properties SHALL
+NOT be sent back. The new field MAY reference existing fields by `name` in its
+conditions and generator input mappings. The operation SHALL always request
+fresh approval and SHALL verify the result after writing.
+
+#### Scenario: Add a workflow-generated field to an existing form
+
+- **GIVEN** a form with existing fields
+- **WHEN** `buddy_add_form_field` adds a field whose `dynamicOptions` maps an
+  input from an existing field's `name`
+- **THEN** the mapping SHALL resolve to that existing field's stored id
+- **AND** the existing fields SHALL be written back unchanged
+- **AND** the new field SHALL be placed at the end, or at an explicit index
+
+#### Scenario: Refuse a duplicate field name
+
+- **WHEN** the added field's `name` is already used on the form
+- **THEN** the request SHALL be rejected before approval
+- **AND** the message SHALL direct the caller to update the existing field
+
+### Requirement: Non-executing form validation and interpretation
+
+The system SHALL expose `buddy_validate_form` as a read capability that checks a
+stored form, raw fields, or typed fields and returns the full semantic report
+without writing anything and without executing any workflow. `buddy_get_form`
+SHALL additionally return an interpreted view naming each field's option source
+and the resolved workflow and trigger, while continuing to return the raw field
+definitions unchanged for lossless editing. Neither SHALL execute an option
+generator.
+
+#### Scenario: Validate a draft before writing it
+
+- **WHEN** `buddy_validate_form` is called with typed fields
+- **THEN** the result SHALL include the compiled canonical fields and the report
+- **AND** SHALL state that nothing was executed or written
+
+#### Scenario: Interpret a stored form
+
+- **WHEN** `buddy_get_form` reads a form containing a workflow-generated dropdown
+- **THEN** the raw field definitions SHALL be returned unchanged
+- **AND** the interpreted view SHALL name the workflow, its type, and the
+  resolved trigger
+- **AND** no option generator SHALL be executed
+
+### Requirement: Explicit option-generator smoke test
+
+The system SHALL expose `buddy_test_form_options` as the only capability that
+executes a Rewst option generator. It SHALL be a write capability, SHALL require
+its workflow id as an argument so the working-workflow scope applies, SHALL run
+the shared generator validation before executing, and SHALL request fresh
+approval on every call. It SHALL resolve supplied form values into generator
+inputs through the field's mappings, handle cached, asynchronous and error
+responses distinctly, and validate that the produced options carry the expected
+label and value keys. An empty result SHALL be reported as inconclusive for key
+validation, never as a pass. The result SHALL report which generator, trigger,
+inputs and checks were exercised, and SHALL NOT include option labels, option
+values, or the supplied form values.
+
+#### Scenario: Options are produced and checked
+
+- **WHEN** the generator returns options
+- **THEN** the result SHALL report the option count and observed key names
+- **AND** SHALL report whether every option carries the label and value keys
+- **AND** SHALL NOT include the option labels or values themselves
+
+#### Scenario: Empty and asynchronous results
+
+- **WHEN** the generator returns no options
+- **THEN** the label and value key checks SHALL be reported as inconclusive
+- **WHEN** the generator returns only an execution id
+- **THEN** the result SHALL report the run as still running
+- **AND** SHALL report the key checks as not run
+
+#### Scenario: No accidental execution
+
+- **WHEN** write tools are disabled
+- **THEN** `buddy_test_form_options` SHALL NOT be advertised
+- **AND** no read capability, including `buddy_get_form` and
+  `buddy_validate_form`, SHALL execute an option generator
+
+### Requirement: Workflow creation supports a declared contract
+
+`buddy_create_workflow` SHALL accept a validated workflow type and the declared
+input and output configuration needed to create an option generator. Creating an
+`OPTION_GENERATOR` SHALL require an `options` output. The capability SHALL only
+create a new workflow; it SHALL NOT convert, clone, activate or change the
+permissions of an existing one.
+
+#### Scenario: Create an option generator with its contract
+
+- **WHEN** `buddy_create_workflow` is called with type `OPTION_GENERATOR`,
+  declared inputs, and an `options` output
+- **THEN** the workflow SHALL be created with that type, inputs and output
+- **WHEN** the `options` output is missing
+- **THEN** the request SHALL be rejected before approval
+
+### Requirement: Trigger creation
+
+The system SHALL expose `buddy_create_trigger`, creating a trigger that invokes
+one workflow. The trigger type SHALL be resolved against the live catalogue by id
+or ref, and inferred only when a form is named and exactly one form-submission
+type exists; otherwise the candidates SHALL be reported. The workflow id SHALL be
+a required argument so the working-workflow scope applies, and the workflow and
+any named form SHALL be verified to belong to the requested organization before
+approval. When a form is named, the trigger's `formId` and its
+`parameters.form_id` SHALL be kept consistent and a contradictory caller-supplied
+value SHALL be rejected; required criteria SHALL default to an evaluable value.
+Any explicitly supplied trigger type that resolves to a non-form trigger type
+SHALL be rejected before approval or mutation when `formId` is supplied.
+The saved trigger SHALL be read back to confirm its workflow, form association
+and enabled state. A new trigger SHALL default to disabled, and enabling it SHALL
+be stated in the approval prompt. Editing an existing trigger SHALL continue to
+use the dedicated trigger tools with their patch and diff safeguards.
+
+#### Scenario: Create a disabled form-submission trigger
+
+- **WHEN** `buddy_create_trigger` is called with a workflow and a form
+- **THEN** the resolved trigger type SHALL come from the live catalogue
+- **AND** the created trigger SHALL be disabled unless enabling was requested
+- **AND** the trigger's `formId` and `parameters.form_id` SHALL both name that form
+- **AND** the saved trigger SHALL be read back and its form association confirmed
+
+#### Scenario: Reject a contradictory form target
+
+- **WHEN** `parameters.form_id` names a different form from `formId`
+- **THEN** the request SHALL be rejected before approval
+
+#### Scenario: Reject an explicit non-form trigger type for a form
+
+- **WHEN** `buddy_create_trigger` receives `formId` and an explicit
+  `triggerTypeId` or `triggerTypeRef` that resolves to a non-form trigger type
+- **THEN** the request SHALL be rejected before approval or mutation
+
+#### Scenario: Ambiguous or unknown trigger type
+
+- **WHEN** the trigger type cannot be resolved to exactly one live type
+- **THEN** the request SHALL be rejected with the candidates or the available refs

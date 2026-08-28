@@ -5,6 +5,7 @@ import { readCapability } from './capabilityFactories';
 import {
 	ORG_ID_FIELD,
 	optionalClampedInt,
+	optionalStringField,
 	parseCapabilityInput,
 	rawGraphqlOrThrow,
 	toInputSchema,
@@ -20,7 +21,7 @@ const DEFAULT_ORG_TRIGGER_INSTANCE_LIMIT = 50;
 const MAX_ORG_TRIGGER_INSTANCE_LIMIT = 200;
 
 const LIST_TRIGGERS_QUERY = `query($orgId: ID!, $limit: Int){ triggers(where:{ orgId:$orgId }, limit:$limit, order:[["name","ASC"]]){ id name enabled triggerTypeId workflowId } }`;
-const LIST_FORMS_QUERY = `query($orgId: ID!, $limit: Int){ forms(where:{ orgId:$orgId }, limit:$limit){ id name updatedAt } }`;
+const LIST_FORMS_QUERY = `query($orgId: ID!, $search: FormSearchInput, $limit: Int, $offset: Int){ forms(where:{ orgId:$orgId }, search:$search, limit:$limit, offset:$offset, order:[["name","ASC"],["id","ASC"]]){ id name updatedAt } }`;
 const LIST_TAGS_QUERY = `query($orgId: ID!, $limit: Int){ tags(where:{ orgId:$orgId }, limit:$limit, order:[["name","asc"]]){ id name color } }`;
 const LIST_ORG_TRIGGER_INSTANCES_QUERY = `query($orgId: ID!, $limit: Int){ orgTriggerInstances(where:{ orgId:$orgId }, limit:$limit){ id triggerId nextFireTime isManualActivation } }`;
 const GET_TRIGGER_ERROR_STATUS_QUERY = `query($triggerIds: [ID!]){ getTriggerErrorStatus(triggerIds:$triggerIds) }`;
@@ -34,6 +35,8 @@ const listTriggersInputSchema = z.object({
 
 const listFormsInputSchema = z.object({
 	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive form-name substring.'),
+	offset: z.number().int().nonnegative().optional().describe('Number of forms to skip for pagination (default 0).'),
 	limit: optionalClampedInt(MAX_FORM_LIMIT).describe(
 		`Max forms to return (default ${DEFAULT_FORM_LIMIT}, max ${MAX_FORM_LIMIT}).`,
 	),
@@ -74,7 +77,8 @@ const listTriggersSpec: ToolSpecDefinition = {
 
 const listFormsSpec: ToolSpecDefinition = {
 	name: 'buddy_list_forms',
-	description: 'List the forms in one Rewst organization (id, name, updatedAt).',
+	description:
+		'List the forms in one Rewst organization (id and name), optionally filtering by a case-insensitive name substring. Use buddy_get_form with an id to read the complete form definition.',
 	inputSchema: toInputSchema(listFormsInputSchema),
 };
 
@@ -124,9 +128,11 @@ async function runListTriggers(input: Record<string, unknown>, ctx: CapabilityCo
 }
 
 async function runListForms(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { orgId, limit: rawLimit } = parseCapabilityInput(listFormsInputSchema, input);
+	const { orgId, search, offset, limit: rawLimit } = parseCapabilityInput(listFormsInputSchema, input);
 	const limit = rawLimit ?? DEFAULT_FORM_LIMIT;
-	const variables = { orgId, limit };
+	const variables: Record<string, unknown> = { orgId, limit };
+	if (search !== undefined) variables.search = { name: { _ilike: `%${search}%` } };
+	if (offset !== undefined) variables.offset = offset;
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_FORMS_QUERY, variables);
 	const forms = ((data as { forms?: unknown[] } | undefined)?.forms ?? []) as {
 		id?: string;

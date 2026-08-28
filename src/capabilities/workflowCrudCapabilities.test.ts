@@ -80,6 +80,13 @@ suite('Unit: workflowCrudCapabilities', () => {
 			assert.strictEqual(schema.properties.description.maxLength, 255);
 		});
 
+		test('documents that an empty output value is stored as an empty expression', () => {
+			const schema = cap('buddy_create_workflow').spec.inputSchema as {
+				properties: { output: { items: { properties: { value: { description: string } } } } };
+			};
+			assert.match(schema.properties.output.items.properties.value.description, /empty expression/);
+		});
+
 		test('creates an empty workflow when approved', async () => {
 			const { ctx, calls } = makeCtx({ create: { data: { createWorkflow: { id: 'w1', name: 'Onboard' } } } });
 			setMcpMutationApprover(async () => true);
@@ -295,5 +302,109 @@ suite('Unit: workflowCrudCapabilities', () => {
 			c.spec.description.includes(WORKFLOW_START_STEERING),
 			'buddy_create_workflow description embeds WORKFLOW_START_STEERING verbatim',
 		);
+	});
+
+	test('buddy_create_workflow declares an option generator with its inputs and options output', async () => {
+		let summaryText = '';
+		setMcpMutationApprover(async (_scope, summary) => {
+			summaryText = summary;
+			return true;
+		});
+		const { ctx, calls } = makeCtx({
+			create: {
+				data: {
+					createWorkflow: {
+						id: 'wf-1',
+						name: 'Get users',
+						orgId: 'org-sandbox',
+						type: 'OPTION_GENERATOR',
+						input: ['tenant_id', 'skipCache'],
+					},
+				},
+			},
+		});
+
+		const result = JSON.parse(
+			await cap('buddy_create_workflow').run(
+				{
+					orgId: 'org-sandbox',
+					name: 'Get users',
+					type: 'OPTION_GENERATOR',
+					input: ['tenant_id', 'skipCache'],
+					output: [{ name: 'options', value: '{{ CTX.user_options }}' }],
+				},
+				ctx,
+			),
+		);
+
+		assert.strictEqual(result.status, 'created');
+		assert.strictEqual(result.type, 'OPTION_GENERATOR');
+		assert.deepStrictEqual(result.output, ['options']);
+		assert.match(summaryText, /type OPTION_GENERATOR; inputs tenant_id, skipCache; outputs options/);
+		assert.deepStrictEqual(callsFor(calls, 'create')[0].variables, {
+			workflow: {
+				orgId: 'org-sandbox',
+				name: 'Get users',
+				type: 'OPTION_GENERATOR',
+				input: ['tenant_id', 'skipCache'],
+				output: [{ options: '{{ CTX.user_options }}' }],
+			},
+		});
+	});
+
+	test('buddy_create_workflow refuses an option generator with no options output', async () => {
+		setMcpMutationApprover(async () => assert.fail('an unusable generator must not reach approval'));
+		const { ctx, calls } = makeCtx({});
+		await assert.rejects(
+			() =>
+				cap('buddy_create_workflow').run(
+					{
+						orgId: 'org-sandbox',
+						name: 'Get users',
+						type: 'OPTION_GENERATOR',
+						output: [{ name: 'users', value: '{{ CTX.users }}' }],
+					},
+					ctx,
+				),
+			/must declare an "options" output/,
+		);
+		assert.strictEqual(calls.length, 0);
+	});
+
+	test('buddy_create_workflow rejects an unknown type and duplicate input or output names', async () => {
+		setMcpMutationApprover(async () => assert.fail('invalid input must not prompt'));
+		for (const [bad, pattern] of [
+			[{ type: 'GENERATOR' }, /Workflow type must be one of/],
+			[{ input: ['a', 'a'] }, /input "a" is declared more than once/],
+			[
+				{
+					output: [
+						{ name: 'a', value: '1' },
+						{ name: 'a', value: '2' },
+					],
+				},
+				/output "a" is declared more than once/,
+			],
+		] as const) {
+			const { ctx, calls } = makeCtx({});
+			await assert.rejects(
+				() => cap('buddy_create_workflow').run({ orgId: 'org-sandbox', name: 'W', ...bad }, ctx),
+				pattern,
+			);
+			assert.strictEqual(calls.length, 0);
+		}
+	});
+
+	test('buddy_create_workflow still creates a plain workflow with no contract declared', async () => {
+		setMcpMutationApprover(async () => true);
+		const { ctx, calls } = makeCtx({
+			create: { data: { createWorkflow: { id: 'wf-1', name: 'Plain', orgId: 'org-sandbox' } } },
+		});
+		const result = JSON.parse(await cap('buddy_create_workflow').run({ orgId: 'org-sandbox', name: 'Plain' }, ctx));
+		assert.strictEqual(result.status, 'created');
+		assert.strictEqual(result.type, 'STANDARD');
+		assert.deepStrictEqual(callsFor(calls, 'create')[0].variables, {
+			workflow: { orgId: 'org-sandbox', name: 'Plain' },
+		});
 	});
 });

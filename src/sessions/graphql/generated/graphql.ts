@@ -350,6 +350,34 @@ export type BulkFormUserFilterInput = {
   search?: InputMaybe<Scalars['String']['input']>;
 };
 
+/**
+ * Result of a batched role membership change. `appliedIds` are the ids that were
+ * valid and processed (safe for the client to drop from its unsaved buffer,
+ * including idempotent no-ops); `skippedIds` are ids that could not be resolved
+ * (e.g. a user/org that no longer exists) and should be kept for retry.
+ */
+export type BulkRoleMembershipResult = {
+  __typename?: 'BulkRoleMembershipResult';
+  /**
+   * Ids the caller can consider SETTLED — no retry needed. Includes ids that were
+   * written, ids that were already in the requested state (idempotent no-ops), and
+   * ids the server deliberately refused (see `refusedIds`). Deliberately a superset
+   * of "changed": clients use it to drain an edit buffer.
+   */
+  appliedIds: Array<Scalars['ID']['output']>;
+  /**
+   * Ids that were REFUSED by policy, not written, and not an error (SC-83897).
+   * Currently only `grantRoleToOrganizations`, where the org sits inside a blocked
+   * subtree for this role and deny beats allow. Always a subset of `appliedIds`:
+   * the request is settled (retrying changes nothing) but nothing was granted, so
+   * a caller that reports plain success is lying. Empty for every other mutation.
+   */
+  refusedIds: Array<Scalars['ID']['output']>;
+  roleId: Scalars['ID']['output'];
+  /** Ids whose target entity was not found. NOT settled — safe for the client to retry. */
+  skippedIds: Array<Scalars['ID']['output']>;
+};
+
 export type BulkSetFormPermissionsInput = {
   formId: Scalars['ID']['input'];
   operation: FormGrantOperation;
@@ -606,11 +634,6 @@ export type ComponentInstanceResult = {
   success: Scalars['Boolean']['output'];
 };
 
-export type ComponentInstanceUpdateInput = {
-  componentVersionId: Scalars['ID']['input'];
-  pageId: Scalars['ID']['input'];
-};
-
 export type ComponentTree = {
   __typename?: 'ComponentTree';
   component: Component;
@@ -664,6 +687,8 @@ export type Conversation = {
   metadata?: Maybe<Scalars['JSON']['output']>;
   orgId: Scalars['ID']['output'];
   organization: Organization;
+  spendPercent?: Maybe<Scalars['Int']['output']>;
+  spendState: SpendState;
   title?: Maybe<Scalars['String']['output']>;
   type: ConversationType;
   updatedAt: Scalars['String']['output'];
@@ -780,7 +805,8 @@ export enum ConversationRole {
 export enum ConversationType {
   HelpDocs = 'HELP_DOCS',
   WorkflowAutoDocumentation = 'WORKFLOW_AUTO_DOCUMENTATION',
-  WorkflowDiagnosis = 'WORKFLOW_DIAGNOSIS'
+  WorkflowDiagnosis = 'WORKFLOW_DIAGNOSIS',
+  WorkflowDiagnosisRemediation = 'WORKFLOW_DIAGNOSIS_REMEDIATION'
 }
 
 export type ConversationWhereInput = {
@@ -928,6 +954,14 @@ export type CrateOverrideOptionInput = {
   isDefault?: InputMaybe<Scalars['Boolean']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
   value?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type CratePackConfigStatus = {
+  __typename?: 'CratePackConfigStatus';
+  configured: Scalars['Boolean']['output'];
+  installed: Scalars['Boolean']['output'];
+  packId: Scalars['ID']['output'];
+  testActionFailing: Scalars['Boolean']['output'];
 };
 
 export type CratePrimaryUnpackedWorkflow = {
@@ -1084,6 +1118,24 @@ export type CrateTriggerUnpackingInput = {
   triggerName: Scalars['String']['input'];
 };
 
+export type CrateUnpackedResourceRef = {
+  __typename?: 'CrateUnpackedResourceRef';
+  clonedFromId?: Maybe<Scalars['ID']['output']>;
+  contentType?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  isSynchronized?: Maybe<Scalars['Boolean']['output']>;
+  name?: Maybe<Scalars['String']['output']>;
+  unpackedFromId?: Maybe<Scalars['ID']['output']>;
+};
+
+export type CrateUnpackedResources = {
+  __typename?: 'CrateUnpackedResources';
+  forms: Array<CrateUnpackedResourceRef>;
+  templates: Array<CrateUnpackedResourceRef>;
+  triggers: Array<CrateUnpackedResourceRef>;
+  workflows: Array<CrateUnpackedResourceRef>;
+};
+
 export type CrateUnpackingArgument = {
   __typename?: 'CrateUnpackingArgument';
   crateToken: CrateToken;
@@ -1108,7 +1160,7 @@ export type CrateUnpackingArgumentSet = {
   createdById: Scalars['ID']['output'];
   humanSecondsSaved: Scalars['Int']['output'];
   id: Scalars['ID']['output'];
-  orgId: Scalars['ID']['output'];
+  orgId?: Maybe<Scalars['ID']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
@@ -1669,7 +1721,9 @@ export enum FormPermissionKey {
   Clone = 'CLONE',
   Delete = 'DELETE',
   Edit = 'EDIT',
+  Export = 'EXPORT',
   ExternalView = 'EXTERNAL_VIEW',
+  Import = 'IMPORT',
   ManageAccess = 'MANAGE_ACCESS',
   Publish = 'PUBLISH',
   Submit = 'SUBMIT',
@@ -2126,6 +2180,19 @@ export type Mutation = {
   approveUserInvite: UserInvite;
   assignGDAPAccess?: Maybe<JobRequestedResponse>;
   assignRoleToUser: UserRole;
+  /**
+   * Batched assign: add the role to many users in one transaction. Audits only
+   * newly-added assignments; SpiceDB is synced off-band via junction-table CDC.
+   */
+  assignRoleToUsers: BulkRoleMembershipResult;
+  /**
+   * Block List: the role's grants stop applying in these orgs and their entire
+   * subtrees (deny > allow; membership rows are kept). Custom roles only.
+   * Rejected with BAD_USER_INPUT if the block would remove the CALLER's own admin
+   * access (they hold this role, a target covers their home org, and no other role
+   * of theirs grants admin access) — another admin must apply it instead.
+   */
+  blockOrganizationsFromRole: BulkRoleMembershipResult;
   bulkCreateOrganizations: Array<Organization>;
   bulkDeleteOrganizations?: Maybe<Scalars['Void']['output']>;
   /**
@@ -2183,7 +2250,6 @@ export type Mutation = {
   debug?: Maybe<Scalars['Boolean']['output']>;
   deleteAppPlatformReservedDomain?: Maybe<Scalars['Void']['output']>;
   deleteComponent?: Maybe<Scalars['Boolean']['output']>;
-  deleteComponentInstance: Scalars['Boolean']['output'];
   deleteConversation: Scalars['ID']['output'];
   deleteConversationMessageVote: Scalars['ID']['output'];
   deleteCrate?: Maybe<Scalars['ID']['output']>;
@@ -2218,6 +2284,8 @@ export type Mutation = {
   deleteWorkflows?: Maybe<Array<Maybe<Scalars['ID']['output']>>>;
   duplicateComponent?: Maybe<Component>;
   excludeUserFromRole: UserRoleExclusion;
+  executeWorkflowFromPage?: Maybe<JobRequestedResponse>;
+  executeWorkflowTriggerFromPage?: Maybe<JobRequestedResponse>;
   findAndDeleteUserInvite?: Maybe<Scalars['Int']['output']>;
   generateComponent: ComponentGeneratorResponse;
   generateDiffExplanation: DiffExplanationResponse;
@@ -2233,6 +2301,8 @@ export type Mutation = {
    * inherits this role.
    */
   grantRoleToOrganizationMembers: OrganizationRoleMembership;
+  /** Batched grant: grant the role to the members of many organizations at once. */
+  grantRoleToOrganizations: BulkRoleMembershipResult;
   installPack?: Maybe<Organization>;
   killConversation: Scalars['Boolean']['output'];
   killWorkflowExecution?: Maybe<Scalars['JSON']['output']>;
@@ -2269,6 +2339,8 @@ export type Mutation = {
   removeAllowedTool: UserRoboRewstyPreferences;
   removeFavoriteAction?: Maybe<Scalars['Void']['output']>;
   removeRoleFromUser: Scalars['Boolean']['output'];
+  /** Batched remove: remove the role from many users in one transaction. */
+  removeRoleFromUsers: BulkRoleMembershipResult;
   removeUserExclusion: Scalars['Boolean']['output'];
   renderJinja?: Maybe<Scalars['JSON']['output']>;
   /**
@@ -2282,9 +2354,13 @@ export type Mutation = {
   revertWorkflowPatch: Scalars['JSON']['output'];
   revokeDelegatedAccess: Scalars['Boolean']['output'];
   revokeRoleFromOrganizationMembers: Scalars['Boolean']['output'];
+  /** Batched revoke: revoke the role from the members of many organizations at once. */
+  revokeRoleFromOrganizations: BulkRoleMembershipResult;
   rotateApiClientSecret: ApiClientSecretRotation;
   runTriggerWithMCP?: Maybe<JobRequestedResponse>;
+  runWorkflow?: Maybe<JobRequestedResponse>;
   runWorkflowForOptions?: Maybe<WorkflowOptionsResponse>;
+  runWorkflowTrigger?: Maybe<JobRequestedResponse>;
   sendGDAPInvites?: Maybe<JobRequestedResponse>;
   setFavoriteActions: Array<UserFavoriteAction>;
   setFormPermissions: SetFormPermissionsResult;
@@ -2329,6 +2405,8 @@ export type Mutation = {
   testWorkflow?: Maybe<JobRequestedResponse>;
   testWorkflowTrigger?: Maybe<JobRequestedResponse>;
   trackWorkflowEvent?: Maybe<Scalars['Void']['output']>;
+  /** Unblock: restores membership-backed (and owning-org) bridges in the freed subtree. */
+  unblockOrganizationsFromRole: BulkRoleMembershipResult;
   uninstallPack?: Maybe<Scalars['Void']['output']>;
   uninstallPackBundle?: Maybe<Scalars['Void']['output']>;
   unlinkClone?: Maybe<Scalars['ID']['output']>;
@@ -2336,7 +2414,6 @@ export type Mutation = {
   unsyncClone?: Maybe<Scalars['ID']['output']>;
   updateAppPlatformReservedDomain?: Maybe<AppPlatformReservedDomain>;
   updateComponent?: Maybe<Component>;
-  updateComponentInstance: ComponentInstance;
   updateConversation: Conversation;
   updateConversationMessageVote: ConversationMessageVote;
   updateCrate?: Maybe<Crate>;
@@ -2430,6 +2507,18 @@ export type MutationAssignGdapAccessArgs = {
 export type MutationAssignRoleToUserArgs = {
   roleId: Scalars['ID']['input'];
   userId: Scalars['ID']['input'];
+};
+
+
+export type MutationAssignRoleToUsersArgs = {
+  roleId: Scalars['ID']['input'];
+  userIds: Array<Scalars['ID']['input']>;
+};
+
+
+export type MutationBlockOrganizationsFromRoleArgs = {
+  orgIds: Array<Scalars['ID']['input']>;
+  roleId: Scalars['ID']['input'];
 };
 
 
@@ -2700,11 +2789,6 @@ export type MutationDeleteComponentArgs = {
 };
 
 
-export type MutationDeleteComponentInstanceArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
 export type MutationDeleteConversationArgs = {
   id: Scalars['ID']['input'];
 };
@@ -2878,6 +2962,22 @@ export type MutationExcludeUserFromRoleArgs = {
 };
 
 
+export type MutationExecuteWorkflowFromPageArgs = {
+  id: Scalars['ID']['input'];
+  input?: InputMaybe<Scalars['JSON']['input']>;
+  orgId: Scalars['ID']['input'];
+  pageId: Scalars['ID']['input'];
+};
+
+
+export type MutationExecuteWorkflowTriggerFromPageArgs = {
+  input?: InputMaybe<Scalars['JSON']['input']>;
+  pageId: Scalars['ID']['input'];
+  triggerInstance: OrgTriggerInstanceInput;
+  workflowId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+
 export type MutationFindAndDeleteUserInviteArgs = {
   email: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
@@ -2940,6 +3040,12 @@ export type MutationGrantDelegatedAccessArgs = {
 
 export type MutationGrantRoleToOrganizationMembersArgs = {
   orgId: Scalars['ID']['input'];
+  roleId: Scalars['ID']['input'];
+};
+
+
+export type MutationGrantRoleToOrganizationsArgs = {
+  orgIds: Array<Scalars['ID']['input']>;
   roleId: Scalars['ID']['input'];
 };
 
@@ -3062,6 +3168,12 @@ export type MutationRemoveRoleFromUserArgs = {
 };
 
 
+export type MutationRemoveRoleFromUsersArgs = {
+  roleId: Scalars['ID']['input'];
+  userIds: Array<Scalars['ID']['input']>;
+};
+
+
 export type MutationRemoveUserExclusionArgs = {
   roleId: Scalars['ID']['input'];
   userId: Scalars['ID']['input'];
@@ -3113,6 +3225,12 @@ export type MutationRevokeRoleFromOrganizationMembersArgs = {
 };
 
 
+export type MutationRevokeRoleFromOrganizationsArgs = {
+  orgIds: Array<Scalars['ID']['input']>;
+  roleId: Scalars['ID']['input'];
+};
+
+
 export type MutationRotateApiClientSecretArgs = {
   id: Scalars['ID']['input'];
 };
@@ -3125,6 +3243,13 @@ export type MutationRunTriggerWithMcpArgs = {
 };
 
 
+export type MutationRunWorkflowArgs = {
+  id: Scalars['ID']['input'];
+  input?: InputMaybe<Scalars['JSON']['input']>;
+  orgId: Scalars['ID']['input'];
+};
+
+
 export type MutationRunWorkflowForOptionsArgs = {
   input: Scalars['JSON']['input'];
   inputContext: Scalars['JSON']['input'];
@@ -3132,6 +3257,13 @@ export type MutationRunWorkflowForOptionsArgs = {
   skipCache?: InputMaybe<Scalars['Boolean']['input']>;
   triggerId?: InputMaybe<Scalars['ID']['input']>;
   workflowId: Scalars['ID']['input'];
+};
+
+
+export type MutationRunWorkflowTriggerArgs = {
+  input?: InputMaybe<Scalars['JSON']['input']>;
+  triggerInstance: OrgTriggerInstanceInput;
+  workflowId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 
@@ -3305,6 +3437,12 @@ export type MutationTrackWorkflowEventArgs = {
 };
 
 
+export type MutationUnblockOrganizationsFromRoleArgs = {
+  orgIds: Array<Scalars['ID']['input']>;
+  roleId: Scalars['ID']['input'];
+};
+
+
 export type MutationUninstallPackArgs = {
   name?: InputMaybe<Scalars['String']['input']>;
   orgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
@@ -3345,12 +3483,6 @@ export type MutationUpdateAppPlatformReservedDomainArgs = {
 
 export type MutationUpdateComponentArgs = {
   component: UpdateComponentInput;
-};
-
-
-export type MutationUpdateComponentInstanceArgs = {
-  id: Scalars['ID']['input'];
-  input: ComponentInstanceUpdateInput;
 };
 
 
@@ -3630,6 +3762,12 @@ export enum OAuthTokenStatusEnum {
   NoMetadata = 'no_metadata',
   NoToken = 'no_token',
   Unknown = 'unknown'
+}
+
+export enum OnDenied {
+  Empty = 'EMPTY',
+  Error = 'ERROR',
+  Null = 'NULL'
 }
 
 /**
@@ -5146,8 +5284,13 @@ export type PermissionAuditLogFiltersInput = {
 export type PermissionAuditLogList = {
   __typename?: 'PermissionAuditLogList';
   entries: Array<PermissionAuditLogEntry>;
-  hasMore: Scalars['Boolean']['output'];
-  totalCount: Scalars['Int']['output'];
+  pageInfo: PermissionAuditLogPageInfo;
+};
+
+export type PermissionAuditLogPageInfo = {
+  __typename?: 'PermissionAuditLogPageInfo';
+  endCursor?: Maybe<Scalars['String']['output']>;
+  hasNextPage: Scalars['Boolean']['output'];
 };
 
 export type PermissionCreateInput = {
@@ -5303,6 +5446,14 @@ export type Query = {
   /**
    * Per-permission grant check resolved through peck-order, matching the path
    * spicedbMiddleware enforces. Returns a Boolean[] aligned with the input order.
+   *
+   * Roles blocked in the caller's home org (SC-83897 Block List — the org itself
+   * or any ancestor) are ALWAYS filtered out of the caller's roles before
+   * checking, so a blocked role's grants don't leak into this probe. `orgId` only
+   * NARROWS that further: roles blocked in the supplied org are filtered too. It
+   * can never widen the result — naming an org where a role is not blocked does
+   * not restore the grants of a role blocked at home. An empty string counts as
+   * omitted.
    */
   checkRolePermissions: Array<Scalars['Boolean']['output']>;
   checkSpiceDBPermission?: Maybe<SpiceDbCheckResult>;
@@ -5322,8 +5473,10 @@ export type Query = {
   crate?: Maybe<Crate>;
   crateCategories?: Maybe<Scalars['JSON']['output']>;
   crateExportInfo?: Maybe<Scalars['JSON']['output']>;
+  cratePackConfigStatuses: Array<CratePackConfigStatus>;
   crateTags: Array<Tag>;
   crateTokenTypes: Array<Scalars['String']['output']>;
+  crateUnpackedResources: CrateUnpackedResources;
   crateUnpackingArgumentSet?: Maybe<CrateUnpackingArgumentSet>;
   crateUseCase?: Maybe<CrateUseCase>;
   crateUseCases: Array<CrateUseCase>;
@@ -5357,7 +5510,6 @@ export type Query = {
   getTestUserSession?: Maybe<User>;
   getTestUsers: Array<User>;
   getTriggerErrorStatus: Scalars['JSON']['output'];
-  home: Scalars['String']['output'];
   hourlyTaskCountByDate: Array<TaskCountByHour>;
   hourlyTimeSavedByDate: Array<TimeSavedByHour>;
   /** This public query returns all available integrations within the Rewst platform. */
@@ -5452,7 +5604,38 @@ export type Query = {
   resourceTypesByPack: Array<PackResourceTypesContainer>;
   roboRewstyConfigOption: RoboRewstyConfigValue;
   roboRewstyConfigOptions: Array<RoboRewstyConfigValue>;
+  roboRewstyWorkflowDraftContent?: Maybe<WorkflowDraftStateMetadata>;
   roboRewstyWorkflowDraftState?: Maybe<WorkflowDraftStateMetadata>;
+  /**
+   * Batched explicit-block counts for the "Block List (N)" tab labels, scoped to
+   * the caller's managed subtree.
+   */
+  roleOrganizationExclusionCounts: Array<RoleOrganizationCount>;
+  /**
+   * Org ids the role is blocked from — explicit blocks PLUS every org inherited
+   * through a blocked org's subtree — for client-side candidate filtering.
+   *
+   * This is the ids-only counterpart to `roleOrganizationExclusions`. The
+   * Organizations tab needs only the blocked-id SET, to keep its "Add
+   * Organizations" modal from ever offering an org the Block List excludes;
+   * fetching the full row payload for that (org records, parent names, and the
+   * membership chip join) is pure fan-out. Always subtree-inclusive, since a
+   * block anywhere in a subtree closes the candidate pool for that whole subtree.
+   *
+   * Scoped to the orgs the CALLER manages, symmetrically with
+   * `roleOrganizationExclusions`.
+   */
+  roleOrganizationExclusionOrgIds: Array<Scalars['ID']['output']>;
+  /**
+   * Orgs explicitly blocked on the role's Block List, scoped to the orgs the
+   * CALLER manages (hierarchy or delegation) — blocks recorded outside the
+   * caller's visibility are omitted, matching
+   * `roleOrganizationExclusionCounts`. When `includeSubOrgs` is true,
+   * descendants of each blocked org are included with `isDirectAssignment=false`
+   * (they are implicitly blocked via subtree inheritance and are read-only in
+   * the UI).
+   */
+  roleOrganizationExclusions: Array<RoleOrganizationRow>;
   /**
    * Batched membership counts for the role list sidebar, scoped to the
    * caller's managed subtree.
@@ -5617,6 +5800,7 @@ export type QueryCheckAuthorizationArgs = {
 
 
 export type QueryCheckRolePermissionsArgs = {
+  orgId?: InputMaybe<Scalars['ID']['input']>;
   permissions: Array<Scalars['String']['input']>;
 };
 
@@ -5713,12 +5897,27 @@ export type QueryCrateExportInfoArgs = {
 };
 
 
+export type QueryCratePackConfigStatusesArgs = {
+  orgId: Scalars['ID']['input'];
+  packIds: Array<Scalars['ID']['input']>;
+};
+
+
 export type QueryCrateTagsArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
   order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
   search?: InputMaybe<TagSearchInput>;
   where?: InputMaybe<TagWhereInput>;
+};
+
+
+export type QueryCrateUnpackedResourcesArgs = {
+  formClonedFromIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  orgId: Scalars['ID']['input'];
+  templateClonedFromIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  triggerClonedFromIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  workflowClonedFromIds?: InputMaybe<Array<Scalars['ID']['input']>>;
 };
 
 
@@ -5856,11 +6055,6 @@ export type QueryGetTriggerErrorStatusArgs = {
 };
 
 
-export type QueryHomeArgs = {
-  domain: Scalars['String']['input'];
-};
-
-
 export type QueryHourlyTaskCountByDateArgs = {
   date: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
@@ -5934,6 +6128,7 @@ export type QueryLocalReferenceOptionsArgs = {
   order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
   orgId: Scalars['ID']['input'];
   search?: InputMaybe<Scalars['String']['input']>;
+  valueIn?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
 
@@ -6068,6 +6263,7 @@ export type QueryOrgVariablesArgs = {
 
 
 export type QueryOrganizationArgs = {
+  pageId?: InputMaybe<Scalars['ID']['input']>;
   search?: InputMaybe<OrganizationSearchInput>;
   where?: InputMaybe<OrganizationWhereInput>;
 };
@@ -6293,11 +6489,11 @@ export type QueryPermissionArgs = {
 
 
 export type QueryPermissionAuditLogArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
   filters?: InputMaybe<PermissionAuditLogFiltersInput>;
   includeSubOrgs?: InputMaybe<Scalars['Boolean']['input']>;
-  limit?: InputMaybe<Scalars['Int']['input']>;
-  offset?: InputMaybe<Scalars['Int']['input']>;
   orgId: Scalars['ID']['input'];
+  pageSize?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -6359,9 +6555,34 @@ export type QueryRoboRewstyConfigOptionsArgs = {
 };
 
 
+export type QueryRoboRewstyWorkflowDraftContentArgs = {
+  orgId: Scalars['ID']['input'];
+  workflowId: Scalars['ID']['input'];
+};
+
+
 export type QueryRoboRewstyWorkflowDraftStateArgs = {
   orgId: Scalars['ID']['input'];
   workflowId: Scalars['ID']['input'];
+};
+
+
+export type QueryRoleOrganizationExclusionCountsArgs = {
+  orgId: Scalars['ID']['input'];
+  roleIds: Array<Scalars['ID']['input']>;
+};
+
+
+export type QueryRoleOrganizationExclusionOrgIdsArgs = {
+  roleId: Scalars['ID']['input'];
+};
+
+
+export type QueryRoleOrganizationExclusionsArgs = {
+  includeSubOrgs?: InputMaybe<Scalars['Boolean']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  roleId: Scalars['ID']['input'];
 };
 
 
@@ -7143,6 +7364,12 @@ export type SourceField = {
   index?: Maybe<Scalars['Int']['output']>;
   schema?: Maybe<Scalars['JSON']['output']>;
 };
+
+export enum SpendState {
+  Capped = 'CAPPED',
+  Normal = 'NORMAL',
+  Warning = 'WARNING'
+}
 
 export type SpiceDbCheckResult = {
   __typename?: 'SpiceDBCheckResult';
@@ -8309,7 +8536,9 @@ export type WorkflowVisibleForOrganizationsArgs = {
 export type WorkflowDraftStateMetadata = {
   __typename?: 'WorkflowDraftStateMetadata';
   draftHash?: Maybe<Scalars['String']['output']>;
+  generation?: Maybe<Scalars['String']['output']>;
   revision?: Maybe<Scalars['Int']['output']>;
+  workflow?: Maybe<Scalars['JSON']['output']>;
 };
 
 export type WorkflowDraftSyncResponse = {
@@ -8317,6 +8546,7 @@ export type WorkflowDraftSyncResponse = {
   didSucceed: Scalars['Boolean']['output'];
   draftHash?: Maybe<Scalars['String']['output']>;
   error?: Maybe<Scalars['String']['output']>;
+  errorStatus?: Maybe<Scalars['Int']['output']>;
   isFinished: Scalars['Boolean']['output'];
   revision?: Maybe<Scalars['Int']['output']>;
 };
@@ -8370,6 +8600,7 @@ export type WorkflowExecutionTaskLogsArgs = {
 
 export type WorkflowExecutionConductor = {
   __typename?: 'WorkflowExecutionConductor';
+  dehydrationFailed?: Maybe<Scalars['Boolean']['output']>;
   errors?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
   executionEngine?: Maybe<Scalars['String']['output']>;
   graph?: Maybe<Scalars['JSON']['output']>;
@@ -8390,7 +8621,7 @@ export type WorkflowExecutionConductorState = {
 };
 
 export type WorkflowExecutionSearchInput = {
-  createdAt?: InputMaybe<String_Comparison_Exp>;
+  createdAt?: InputMaybe<Timestamp_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   numAwaitingResponseTasks?: InputMaybe<Int_Comparison_Exp>;
   orgId?: InputMaybe<Id_Comparison_Exp>;
@@ -8825,6 +9056,24 @@ export type String_Comparison_Exp = {
   _nin?: InputMaybe<Array<Scalars['String']['input']>>;
   _nlike?: InputMaybe<Scalars['String']['input']>;
   _substr?: InputMaybe<Scalars['String']['input']>;
+};
+
+/**
+ * Expression to compare an ISO-8601 timestamp field. Exposes only operators that a
+ * @filterAsField-mapped field can translate to its UUIDv7 target (substring/pattern
+ * operators are intentionally omitted so callers cannot land on an untranslatable,
+ * column-less path). All fields are combined with logical 'AND'.
+ */
+export type Timestamp_Comparison_Exp = {
+  _eq?: InputMaybe<Scalars['String']['input']>;
+  _gt?: InputMaybe<Scalars['String']['input']>;
+  _gte?: InputMaybe<Scalars['String']['input']>;
+  _in?: InputMaybe<Array<Scalars['String']['input']>>;
+  _lt?: InputMaybe<Scalars['String']['input']>;
+  _lte?: InputMaybe<Scalars['String']['input']>;
+  _ne?: InputMaybe<Scalars['String']['input']>;
+  _neq?: InputMaybe<Scalars['String']['input']>;
+  _nin?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
 export type ConversationFragment = { __typename?: 'Conversation', id: string, title?: string | null, type: ConversationType, orgId: string, userId: string, metadata?: any | null, createdAt: string, updatedAt: string };
