@@ -7,7 +7,7 @@ import {
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
-import type { Session } from '@sessions';
+import type { Session } from '../../packages/mcp-server/src/sessions';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import { TRIGGER_ACTIVATION_CAPABILITIES } from './triggerActivationCapabilities';
 

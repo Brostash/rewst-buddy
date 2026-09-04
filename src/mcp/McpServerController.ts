@@ -9,8 +9,7 @@ import { readMcpSettings } from './settings';
  * Streamable HTTP transport is mounted on that server at /mcp (see mcpServer.ts),
  * so MCP needs the server bound even if the browser-extension server
  * (rewst-buddy.server.enabled) is off. The token is persisted (runtime.ts) and
- * the client config carries the live URL, so there is no discovery file to keep
- * in step.
+ * the client config carries the live URL, and the backend keeps shared-server discovery in step.
  */
 export const McpServerController = new (class _ implements vscode.Disposable {
 	private disposables: vscode.Disposable[] = [];

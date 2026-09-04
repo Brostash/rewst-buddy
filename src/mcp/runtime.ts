@@ -1,3 +1,4 @@
+import { getSharedConnection, assertCanRotateSharedToken, updateSharedToken } from '../backend/sharedConnection';
 import { context } from '@global';
 import { log } from '@utils';
 import crypto from 'crypto';
@@ -29,6 +30,8 @@ function persist(token: string): void {
 
 /** The stable token, creating and persisting one on first use. */
 export function getMcpToken(): string {
+	const shared = getSharedConnection();
+	if (shared) return shared.descriptor.publicToken;
 	if (cachedToken) return cachedToken;
 	const existing = context.globalState.get<string>(TOKEN_KEY);
 	if (existing) {
@@ -42,8 +45,10 @@ export function getMcpToken(): string {
 
 /** Replaces the token with a fresh one (revokes any client still using the old). */
 export function rotateMcpToken(): string {
+	assertCanRotateSharedToken();
 	const token = crypto.randomBytes(32).toString('hex');
 	persist(token);
+	updateSharedToken(token);
 	return token;
 }
 

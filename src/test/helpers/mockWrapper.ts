@@ -1,4 +1,4 @@
-import { SdkFunctionWrapper } from '@sessions';
+import { SdkFunctionWrapper } from '../../../packages/mcp-server/src/sessions';
 
 /**
  * Mock response configuration for a GraphQL operation

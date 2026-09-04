@@ -1,3 +1,4 @@
+import { callTool } from '../../../mcp/McpActions';
 import { LinkManager, orgForTemplateLink, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
@@ -141,6 +142,11 @@ async function runTool(
 		case 'buddy_search_template_links':
 			return { output: searchTemplateLinks(deps, request.args) };
 		default: {
+			if (!graphqlDeps && (isWorkflowTool(request.tool) || isGraphqlTool(request.tool))) {
+				const result = await callTool({ name: request.tool, arguments: request.args, origin: 'chat' });
+				if (result.isError) throw new Error(result.text);
+				return { output: result.text };
+			}
 			if (isWorkflowTool(request.tool)) {
 				return { output: await runWorkflowTool(request, graphqlDeps) };
 			}

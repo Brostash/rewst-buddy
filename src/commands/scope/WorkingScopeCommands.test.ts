@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { WorkingScopeManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, initTestEnvironment } from '@test';
@@ -15,7 +16,7 @@ suite('Unit: WorkingScope commands', () => {
 	let originalNotifyInfo: typeof log.notifyInfo;
 	let originalNotifyError: typeof log.notifyError;
 
-	setup(() => {
+	setup(async () => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		WorkingScopeManager._resetForTesting();
@@ -25,7 +26,7 @@ suite('Unit: WorkingScope commands', () => {
 		log.notifyInfo = () => {};
 	});
 
-	teardown(() => {
+	teardown(async () => {
 		vscode.window.showQuickPick = originalShowQuickPick;
 		log.notifyInfo = originalNotifyInfo;
 		log.notifyError = originalNotifyError;
@@ -35,7 +36,7 @@ suite('Unit: WorkingScope commands', () => {
 
 	function useSession(orgId = 'org-1', orgName = 'Acme') {
 		const { session } = createMockSession({ profile: { org: { id: orgId, name: orgName } } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 	}
 
 	test('SetWorkingScope pins the selected orgs', async () => {
@@ -52,7 +53,7 @@ suite('Unit: WorkingScope commands', () => {
 
 	test('SetWorkingScope shows a second picker for pinned workflows and keeps selected ones', async () => {
 		useSession('org-1', 'Acme');
-		WorkingScopeManager.setWorkflows(['wf-1']);
+		await WorkingScopeManager.setWorkflows(['wf-1']);
 		let pickCallCount = 0;
 		vscode.window.showQuickPick = (async (items: readonly { id?: string }[]) => {
 			pickCallCount++;
@@ -78,7 +79,7 @@ suite('Unit: WorkingScope commands', () => {
 
 	test('SetWorkingScope removes workflow pins that the user deselects', async () => {
 		useSession('org-1', 'Acme');
-		WorkingScopeManager.setWorkflows(['wf-1', 'wf-2']);
+		await WorkingScopeManager.setWorkflows(['wf-1', 'wf-2']);
 		let pickCallCount = 0;
 		vscode.window.showQuickPick = (async (items: readonly { id?: string }[]) => {
 			pickCallCount++;
@@ -117,8 +118,8 @@ suite('Unit: WorkingScope commands', () => {
 				],
 			},
 		});
-		SessionManager._setSessionsForTesting([session]);
-		WorkingScopeManager.setOrgs(['org-2']);
+		installMockSessions([session]);
+		await WorkingScopeManager.setOrgs(['org-2']);
 
 		let captured: readonly { id?: string }[] = [];
 		vscode.window.showQuickPick = (async (items: readonly { id?: string }[]) => {
@@ -134,7 +135,7 @@ suite('Unit: WorkingScope commands', () => {
 
 	test('SetWorkingScope leaves the scope unchanged when cancelled', async () => {
 		useSession('org-1');
-		WorkingScopeManager.setOrgs(['org-existing']);
+		await WorkingScopeManager.setOrgs(['org-existing']);
 		vscode.window.showQuickPick = (async () => undefined) as typeof vscode.window.showQuickPick;
 
 		await new SetWorkingScope().execute();
@@ -161,8 +162,8 @@ suite('Unit: WorkingScope commands', () => {
 	});
 
 	test('ClearWorkingScope empties the scope', async () => {
-		WorkingScopeManager.setOrgs(['org-1']);
-		WorkingScopeManager.setWorkflows(['wf-1']);
+		await WorkingScopeManager.setOrgs(['org-1']);
+		await WorkingScopeManager.setWorkflows(['wf-1']);
 
 		await new ClearWorkingScope().execute();
 

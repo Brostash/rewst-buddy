@@ -1,88 +1,70 @@
-import type { Capability } from './Capability';
-import {
-	WORKFLOW_CHAT_CAPABILITIES,
-	WORKSPACE_CHAT_CAPABILITIES,
-	graphqlSchemaCapability,
-} from './chatToolCapabilities';
-import { CRATE_CAPABILITIES } from './crateCapabilities';
-import { crateUnpackCapability } from './crateUnpackCapability';
-import { graphqlMutateCapability } from './graphqlMutateCapability';
-import { JINJA_DOCS_CAPABILITIES } from './jinjaDocsCapabilities';
-import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
-import { ORG_VARIABLE_MUTATE_CAPABILITIES } from './orgVariableMutateCapabilities';
-import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
-import { PAGE_TEMPLATE_CAPABILITIES } from './pageTemplateCapabilities';
-import { resultReadCapability } from './resultReadCapability';
-import { READ_CAPABILITIES } from './rewstReadCapabilities';
-import { TAG_MUTATE_CAPABILITIES } from './tagMutateCapabilities';
-import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
+import { registerHostCapabilities } from '../../packages/mcp-server/src/capabilities/registry';
+import type { Capability as BackendCapability } from '../../packages/mcp-server/src/capabilities/Capability';
+import { Session } from '@sessions';
+import type { SessionProfile } from '@sessions';
+import type { Capability, CapabilityContext } from './EditorCapability';
 import { TEMPLATE_LINK_CAPABILITIES } from './templateLinkCapabilities';
-import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 import { TEMPLATE_SYNC_CAPABILITIES } from './templateSyncCapabilities';
-import { TRIGGER_ACTIVATION_CAPABILITIES } from './triggerActivationCapabilities';
-import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
-import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
-import { TRIGGER_TAG_CAPABILITIES } from './triggerTagCapabilities';
-import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
-import { workflowImpactCapability } from './workflowImpactCapability';
-import {
-	deleteWorkflowInputProfileCapability,
-	listWorkflowInputProfilesCapability,
-	saveWorkflowInputProfileCapability,
-} from './workflowInputProfileCapabilities';
-import { workflowLintCapability } from './workflowLintCapability';
-import { WORKING_SCOPE_CAPABILITIES } from './workingScopeCapability';
+import { WORKSPACE_CHAT_CAPABILITIES } from './chatToolCapabilities';
 
-/**
- * The single source of truth for Rewst capabilities. Every capability is
- * exposed over the MCP server surface (behind the boundary's access gates) and
- * mirrored by Cage-Free Rewsty's in-process Buddy path; adding a capability
- * here surfaces it everywhere. Names must be unique across the registry.
- */
-export const CAPABILITY_REGISTRY: Capability[] = [
-	...WORKSPACE_CHAT_CAPABILITIES,
-	...WORKFLOW_CHAT_CAPABILITIES,
-	graphqlSchemaCapability,
-	...READ_CAPABILITIES,
-	...TRIGGER_FORM_CAPABILITIES,
-	...PACK_INTEGRATION_CAPABILITIES,
-	...ORG_USER_CAPABILITIES,
-	...PAGE_TEMPLATE_CAPABILITIES,
-	...ORG_VARIABLE_MUTATE_CAPABILITIES,
-	...TAG_MUTATE_CAPABILITIES,
-	...WORKFLOW_CRUD_CAPABILITIES,
-	...TRIGGER_MUTATE_CAPABILITIES,
-	...TRIGGER_TAG_CAPABILITIES,
-	...TRIGGER_ACTIVATION_CAPABILITIES,
-	...TEMPLATE_MUTATE_CAPABILITIES,
-	...TEMPLATE_SYNC_CAPABILITIES,
+/** Capabilities that require the embedding editor host to perform local work. */
+export const OPTIONAL_EDITOR_CAPABILITIES: readonly Capability[] = [
 	...TEMPLATE_LINK_CAPABILITIES,
-	...TEMPLATE_CLONE_CAPABILITIES,
-	...WORKING_SCOPE_CAPABILITIES,
-	...JINJA_DOCS_CAPABILITIES,
-	...CRATE_CAPABILITIES,
-	crateUnpackCapability,
-	workflowImpactCapability,
-	workflowLintCapability,
-	saveWorkflowInputProfileCapability,
-	listWorkflowInputProfilesCapability,
-	deleteWorkflowInputProfileCapability,
-	graphqlMutateCapability,
-	resultReadCapability,
+	...TEMPLATE_SYNC_CAPABILITIES,
+	...WORKSPACE_CHAT_CAPABILITIES,
 ];
 
-const BY_NAME = new Map(CAPABILITY_REGISTRY.map(capability => [capability.spec.name, capability]));
-
-if (BY_NAME.size !== CAPABILITY_REGISTRY.length) {
-	throw new Error('CAPABILITY_REGISTRY contains duplicate capability names');
+/** Context shipped by the standalone server when it asks the editor to run a capability. */
+export interface EditorCapabilityRequestContext {
+	orgId: string;
+	profile?: SessionProfile;
+	profiles: SessionProfile[];
 }
 
-/** A capability by tool name, or undefined if no capability owns that name. */
-export function getCapability(name: string): Capability | undefined {
-	return BY_NAME.get(name);
+function editorSession(profile: SessionProfile): Session {
+	return new Session(undefined, profile, profile.user.id ?? undefined);
 }
 
-/** Capabilities exposed on the MCP server surface. */
-export function mcpCapabilities(): Capability[] {
-	return CAPABILITY_REGISTRY;
+/** Run one of the explicitly exported optional editor capabilities. */
+export function runOptionalEditorCapability(
+	capability: Capability,
+	input: Record<string, unknown>,
+	context: EditorCapabilityRequestContext,
+): Promise<string> {
+	const session = context.profile ? editorSession(context.profile) : undefined;
+	const sessions = context.profiles.map(editorSession);
+	return capability.run(input, {
+		orgId: context.orgId,
+		session: session!,
+		sessions,
+	} satisfies CapabilityContext);
 }
+
+/**
+ * Importing this module installs the editor's optional surface for the embedded
+ * fallback server. The standalone package never imports this module, and so has
+ * no editor tools. The private shared-server bridge uses the raw catalog above
+ * and runOptionalEditorCapability instead of this registry mutation.
+ */
+registerHostCapabilities(
+	OPTIONAL_EDITOR_CAPABILITIES.map(
+		capability =>
+			({
+				...capability,
+				async run(input, ctx) {
+					const profile = ctx.session?.profile;
+					return runOptionalEditorCapability(capability, input, {
+						orgId: ctx.orgId,
+						profile: profile as SessionProfile | undefined,
+						profiles: ctx.sessions.map(session => session.profile as SessionProfile),
+					});
+				},
+			}) satisfies BackendCapability,
+	),
+);
+
+export {
+	CAPABILITY_REGISTRY,
+	getCapability,
+	mcpCapabilities,
+} from '../../packages/mcp-server/src/capabilities/registry';

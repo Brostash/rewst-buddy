@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, SyncManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -52,7 +53,7 @@ suite('Unit: LinkFolder', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		}));
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		stub(vscode.window, 'showQuickPick', (async (items: readonly { detail?: string }[]) =>
 			items.find(i => i.detail === 'Primary Organization')) as unknown as typeof vscode.window.showQuickPick);
@@ -71,7 +72,7 @@ suite('Unit: LinkFolder', () => {
 	test('does not link the folder when org selection is cancelled', async () => {
 		const org = Fixtures.orgModel({ id: 'org-cancel', name: 'Cancel Org' });
 		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		stub(vscode.window, 'showQuickPick', (async () => undefined) as unknown as typeof vscode.window.showQuickPick);
 
@@ -83,7 +84,7 @@ suite('Unit: LinkFolder', () => {
 	test('still links the folder when fetching its templates fails', async () => {
 		const org = Fixtures.orgModel({ id: 'org-fetch-fail', name: 'Fetch Fail Org' });
 		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		stub(vscode.window, 'showQuickPick', (async (items: readonly { detail?: string }[]) =>
 			items.find(i => i.detail === 'Primary Organization')) as unknown as typeof vscode.window.showQuickPick);

@@ -90,7 +90,7 @@ export class SetWorkingScope extends GenericCommand {
 				.filter((id): id is string => typeof id === 'string');
 		}
 
-		WorkingScopeManager.applyChange({ orgs: selectedOrgIds, workflows: selectedWorkflowIds, replace: true });
+		await WorkingScopeManager.applyChange({ orgs: selectedOrgIds, workflows: selectedWorkflowIds, replace: true });
 		const orgPart = picked.length > 0 ? `${picked.length} org${picked.length === 1 ? '' : 's'}` : 'no orgs';
 		const wfPart =
 			selectedWorkflowIds.length > 0

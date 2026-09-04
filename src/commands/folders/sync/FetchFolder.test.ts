@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { FolderLink, LinkManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -47,7 +48,7 @@ suite('Unit: FetchFolder', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		}));
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		await new FetchFolder().execute([folderUri]);
 

@@ -48,3 +48,6 @@ dist/**
 # Misc
 *.code-workspace
 ../**
+
+# The extension bundle embeds the server; its standalone package is distributed separately.
+packages/**

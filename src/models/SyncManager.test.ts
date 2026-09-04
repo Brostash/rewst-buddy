@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { FolderLink, LinkManager, Org, SyncOnSaveManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
@@ -81,7 +82,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			data: Fixtures.getTemplateQuery({ name: 'Test Template' }),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		// Act: Call checkAutoFetch
 		// Note: checkAutoFetch is private, so we access it via bracket notation
@@ -133,7 +134,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			}),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content });
 
@@ -181,7 +182,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			error: Fixtures.networkError('Connection failed'),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content });
 
@@ -238,7 +239,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			}),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		// Create doc with MODIFIED content (hash mismatch)
 		const doc = createMockDocument({ uri, content: modifiedContent });
@@ -299,7 +300,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			}),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content });
 
@@ -344,7 +345,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 		const { session } = createMockSession({
 			profile: { org: mainOrg, allManagedOrgs: [mainOrg, { id: 'sub-org', name: 'Sub Org' }] },
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const uri = vscode.Uri.file('/test/sub-org-template.txt');
 		const body = '// sub org template body';
@@ -381,7 +382,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 		const { session } = createMockSession({
 			profile: { org: mainOrg, allManagedOrgs: [mainOrg, { id: 'sub-org', name: 'Sub Org' }] },
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const uri = vscode.Uri.file('/test/apply-sub-org.txt');
 		const body = '// downloaded body';
@@ -407,8 +408,16 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 
 		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
 		// to succeed — a non-open mock document's save fails for real otherwise.
-		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
-		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
+		const restoreApply = stub(
+			vscode.workspace,
+			'applyEdit',
+			(async () => true) as typeof vscode.workspace.applyEdit,
+		);
+		const restoreSave = stub(
+			vscode.workspace,
+			'save',
+			(async (u: vscode.Uri) => u) as typeof vscode.workspace.save,
+		);
 		try {
 			await SyncManager.applyTemplateToDocument(doc, session, remoteTemplate);
 		} finally {
@@ -428,7 +437,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 		function setUpDownload(uri: vscode.Uri, localContent: string) {
 			const org = Fixtures.orgModel({ id: 'org-172', name: 'Org 172' });
 			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-			SessionManager._setSessionsForTesting([session]);
+			installMockSessions([session]);
 			const doc = createMockDocument({ uri, content: localContent });
 			const remoteTemplate = Fixtures.fullTemplate({
 				id: 'tpl-172',
@@ -531,11 +540,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 
 			assert.strictEqual(saveCalls, 3, 'a thrown save is retried like a falsy save result');
 			assert.strictEqual(appliedTexts.length, 2, 'the download edit, then a revert edit, are applied');
-			assert.strictEqual(
-				appliedTexts[1],
-				localContent,
-				'the revert edit still runs after every retry throws',
-			);
+			assert.strictEqual(appliedTexts[1], localContent, 'the revert edit still runs after every retry throws');
 			assert.throws(
 				() => LinkManager.getTemplateLink(uri),
 				'the link is never recorded when every save attempt throws',
@@ -620,7 +625,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			}),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content });
 
@@ -668,7 +673,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				updatedAt: 'remote-ts',
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const restore = stub(vscode.workspace, 'getConfiguration', (() => ({
 			get: (key: string, defaultValue?: unknown) => (key === 'autoFetchOnOpen' ? false : defaultValue),
@@ -692,7 +697,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 		const { session, wrapper } = createMockSession({
 			profile: { org: mainOrg, allManagedOrgs: [mainOrg, { id: 'sub-org', name: 'Sub Org' }] },
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const uri = vscode.Uri.file('/test/auto-fetch-sub-org.txt');
 		const content = '// unchanged local body';
@@ -721,8 +726,16 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 		const doc = createMockDocument({ uri, content });
 		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
 		// to succeed — a non-open mock document's save fails for real otherwise.
-		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
-		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
+		const restoreApply = stub(
+			vscode.workspace,
+			'applyEdit',
+			(async () => true) as typeof vscode.workspace.applyEdit,
+		);
+		const restoreSave = stub(
+			vscode.workspace,
+			'save',
+			(async (u: vscode.Uri) => u) as typeof vscode.workspace.save,
+		);
 		try {
 			await (SyncManager as any)['checkAutoFetch'](doc);
 		} finally {
@@ -791,7 +804,7 @@ suite('Unit: SyncManager.handleSave (sync on save)', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content: '// locally edited content' });
 		return { uri, doc, wrapper };
@@ -842,7 +855,7 @@ suite('Unit: SyncManager.handleSave (sync on save)', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		SyncOnSaveManager.enableSync(uri);
 
 		SyncManager._setConflictDepsForTesting({
@@ -916,7 +929,7 @@ suite('Unit: SyncManager.fetchFolder', () => {
 				),
 			),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		return { session, wrapper };
 	}
 
@@ -1136,7 +1149,7 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content: localContent });
 		return { uri, doc, wrapper, templateId, org };
@@ -1228,7 +1241,7 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		SyncManager._setConflictDepsForTesting({
 			showDiff: async () => fakeRemoteUri,
 			promptChoice: async () => {
-				SessionManager._setSessionsForTesting([freshSession]);
+				installMockSessions([freshSession]);
 				return 'Keep Local';
 			},
 			closeDiff: async () => {},
@@ -1257,7 +1270,7 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		SyncManager._setConflictDepsForTesting({
 			showDiff: async () => fakeRemoteUri,
 			promptChoice: async () => {
-				SessionManager._setSessionsForTesting([]);
+				installMockSessions([]);
 				return 'Keep Local';
 			},
 			closeDiff: async () => {},
@@ -1283,8 +1296,16 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 
 		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
 		// to succeed — a non-open mock document's save fails for real otherwise.
-		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
-		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
+		const restoreApply = stub(
+			vscode.workspace,
+			'applyEdit',
+			(async () => true) as typeof vscode.workspace.applyEdit,
+		);
+		const restoreSave = stub(
+			vscode.workspace,
+			'save',
+			(async (u: vscode.Uri) => u) as typeof vscode.workspace.save,
+		);
 		try {
 			await SyncManager.syncTemplate(doc);
 		} finally {
@@ -1402,7 +1423,7 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution, real button-driven d
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content: localContent });
 		return { uri, doc, wrapper, templateId, org };
@@ -1601,7 +1622,7 @@ suite('Unit: SyncManager.syncTemplate (concurrency guard)', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content });
 
@@ -1670,7 +1691,7 @@ suite('Unit: SyncManager.syncTemplate (avoid false conflicts after upload)', () 
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const firstDoc = createMockDocument({ uri, content: '// edit one' });
 		await SyncManager.syncTemplate(firstDoc);
@@ -1744,7 +1765,7 @@ suite('Unit: SyncManager.fetchAllFolders', () => {
 		(SyncManager as any)['isActive'] = false;
 
 		const { session, wrapper } = createMockSession({ profile: { org: orgA, allManagedOrgs: [orgA] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink({ type: 'Folder', uriString: folderUriA.toString(), org: orgA });
 
 		await SyncManager.fetchAllFolders();
@@ -1781,7 +1802,7 @@ suite('Unit: SyncManager.fetchAllFolders', () => {
 				}),
 			};
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		LinkManager.addLink({ type: 'Folder', uriString: folderUriA.toString(), org: orgA });
 		LinkManager.addLink({ type: 'Folder', uriString: folderUriB.toString(), org: orgB });
@@ -1827,7 +1848,7 @@ suite('Unit: SyncManager.fetchAllFolders', () => {
 				organization: Fixtures.org({ id: orgB.id, name: orgB.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		// Org A first: its failure previously aborted the loop before org B ran.
 		LinkManager.addLink({ type: 'Folder', uriString: folderUriA.toString(), org: orgA });
@@ -1885,7 +1906,7 @@ suite('Unit: SyncManager.checkAutoFetch (spec contract: timestamp comparison)', 
 				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content });
 		try {
@@ -1929,7 +1950,7 @@ suite('Unit: SyncManager.checkAutoFetch (spec contract: timestamp comparison)', 
 				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content });
 		try {
@@ -1995,7 +2016,7 @@ suite('Unit: SyncManager.syncTemplate (spec contract: org guard)', () => {
 		wrapper.when('updateTemplateBody', {
 			data: Fixtures.updateTemplateBodyMutation({ id: 'tpl-guard', updatedAt: 'ts-2' }),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = createMockDocument({ uri, content: localContent });
 		await assert.rejects(

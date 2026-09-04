@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -63,7 +64,7 @@ suite('Unit: OpenTemplateInteractive', () => {
 				Fixtures.template({ id: templateId, name: 'Already Open', orgId: org.id }),
 			]),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const uri = vscode.Uri.file('/ws/already-open.j2');
 		const existingLink: TemplateLink = {
@@ -106,7 +107,7 @@ suite('Unit: OpenTemplateInteractive', () => {
 				body: 'fetched body',
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubPickFlow(templateId);
 
 		const fixedUri = vscode.Uri.file('/ws/interactive-new.j2');
@@ -128,7 +129,7 @@ suite('Unit: OpenTemplateInteractive', () => {
 				Fixtures.template({ id: 'tpl-x', name: 'Some Template', orgId: org.id }),
 			]),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubPickFlow(undefined);
 
 		await new OpenTemplateInteractive().execute();

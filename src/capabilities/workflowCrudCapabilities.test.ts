@@ -4,7 +4,7 @@ import {
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
-import type { Session } from '@sessions';
+import type { Session } from '../../packages/mcp-server/src/sessions';
 import { initTestEnvironment } from '@test';
 import { CRATE_REUSE_STEERING, WORKFLOW_START_STEERING } from '@workflow';
 import * as assert from 'assert';

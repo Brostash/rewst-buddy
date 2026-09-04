@@ -1,3 +1,5 @@
+import { installMockProfiles } from '@test';
+import { installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -107,7 +109,7 @@ suite('Unit: OpenInRewst', () => {
 				},
 			},
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		// Should use the EU region URL — no throw means success
 		await command.execute([uri]);
@@ -123,7 +125,7 @@ suite('Unit: OpenInRewst', () => {
 		LinkManager.addLink(link);
 
 		// Set up known profile WITHOUT active session
-		SessionManager._setKnownProfilesForTesting([
+		installMockProfiles([
 			{
 				region: {
 					name: 'AU',
@@ -152,7 +154,7 @@ suite('Unit: OpenInRewst', () => {
 		LinkManager.addLink(link);
 
 		// Profile's primary org differs from link org, but link org is in allManagedOrgs
-		SessionManager._setKnownProfilesForTesting([
+		installMockProfiles([
 			{
 				region: {
 					name: 'EU',
@@ -213,7 +215,7 @@ suite('Unit: OpenInRewst', () => {
 				},
 			},
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		// Verify the URL would be correct by checking getSessionForOrg resolves
 		const resolvedSession = await SessionManager.getSessionForOrg(orgId);

@@ -1,9 +1,14 @@
 import { initTestEnvironment } from '@test';
+import { configureRuntimeHost, getRuntimeHost } from '../../packages/mcp-server/src/host';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import CookieString from './CookieString';
-import { getRegionConfigs, getSubscriptionsUrl, type RegionConfig } from './RegionConfig';
+import CookieString from '../../packages/mcp-server/src/sessions/CookieString';
+import {
+	getRegionConfigs,
+	getSubscriptionsUrl,
+	type RegionConfig,
+} from '../../packages/mcp-server/src/sessions/RegionConfig';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -37,6 +42,14 @@ suite('Unit: session configuration boundaries', () => {
 	setup(() => {
 		initTestEnvironment();
 	});
+
+	function configureRegions(value: RegionConfig[] | undefined): void {
+		const runtime = getRuntimeHost();
+		configureRuntimeHost({
+			...runtime,
+			getSetting: <T>(_key: string, fallback: T): T => (value === undefined ? fallback : (value as T)),
+		});
+	}
 
 	teardown(() => {
 		while (restores.length) restores.pop()!.restore();
@@ -106,22 +119,13 @@ suite('Unit: session configuration boundaries', () => {
 	suite('getRegionConfigs()', () => {
 		test('returns every configured region in configured order', () => {
 			const configured = [region({ name: 'North America' }), region({ name: 'Europe', cookieName: 'euSession' })];
-			restores.push(
-				stub(vscode.workspace, 'getConfiguration', ((section: string) => {
-					assert.strictEqual(section, 'rewst-buddy');
-					return { get: () => configured };
-				}) as unknown as typeof vscode.workspace.getConfiguration),
-			);
+			configureRegions(configured);
 
 			assert.deepStrictEqual(getRegionConfigs(), configured);
 		});
 
 		test('uses the built-in North America region when the setting is absent', () => {
-			restores.push(
-				stub(vscode.workspace, 'getConfiguration', (() => ({
-					get: (_key: string, fallback: RegionConfig[]) => fallback,
-				})) as unknown as typeof vscode.workspace.getConfiguration),
-			);
+			configureRegions(undefined);
 
 			assert.deepStrictEqual(getRegionConfigs(), [
 				{
@@ -134,11 +138,7 @@ suite('Unit: session configuration boundaries', () => {
 		});
 
 		test('rejects an explicitly empty region list before session creation can begin', () => {
-			restores.push(
-				stub(vscode.workspace, 'getConfiguration', (() => ({
-					get: () => [],
-				})) as unknown as typeof vscode.workspace.getConfiguration),
-			);
+			configureRegions([]);
 
 			assert.throws(() => getRegionConfigs(), /No regions were found/);
 		});

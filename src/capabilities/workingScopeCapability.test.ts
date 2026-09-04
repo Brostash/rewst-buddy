@@ -1,6 +1,6 @@
-import { WorkingScopeManager } from '@models';
-import type { Session } from '@sessions';
-import { SessionManager } from '@sessions';
+import { WorkingScopeManager } from '../../packages/mcp-server/src/models/WorkingScopeManager';
+import type { Session } from '../../packages/mcp-server/src/sessions';
+import { SessionManager } from '../../packages/mcp-server/src/sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';

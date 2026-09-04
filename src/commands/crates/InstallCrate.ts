@@ -2,19 +2,8 @@ import { Session } from '@sessions';
 import { pickOrganization } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { rawGraphqlOrThrow } from '../../capabilities/inputHelpers';
-import {
-	buildUnpackInput,
-	CRATE_DETAIL_QUERY,
-	CRATE_LIST_QUERY,
-	isValueToken,
-	parseCrateDetail,
-	tokenDefault,
-	type CrateDetail,
-	type CrateTokenDetail,
-	type TokenValues,
-} from '../../crates/crateUnpack';
-import { runUnpackCrate } from '../../crates/unpackClient';
+import { editorDataClient } from '../../backend/editorDataClient';
+import type { CrateDetail, CrateTokenDetail, TokenValues } from '../../crates/crateUnpack';
 import GenericCommand from '../GenericCommand';
 
 /**
@@ -39,7 +28,14 @@ export interface CrateQuickPickItem extends vscode.QuickPickItem {
 	crateId: string;
 }
 
-const CRATE_LIST_LIMIT = 500;
+function isValueToken(token: CrateTokenDetail): boolean {
+	return token.type !== undefined && (token.type.startsWith('input') || token.type.startsWith('select'));
+}
+
+function tokenDefault(token: CrateTokenDetail): string | undefined {
+	if (token.value !== undefined) return token.value;
+	return token.options.find(option => option.isDefault)?.value;
+}
 
 /**
  * Maps catalog rows to QuickPick items: rows without an id are dropped, and
@@ -65,12 +61,11 @@ export function crateQuickPickItems(crates: readonly CrateListRow[]): CrateQuick
 }
 
 async function pickCrate(session: Session, orgId: string): Promise<string | undefined> {
+	const sessionId = session.profile.user.id;
+	if (!sessionId) throw new Error('Session has no user id.');
 	const crates = await vscode.window.withProgress(
 		{ location: vscode.ProgressLocation.Notification, title: 'Loading Crate catalog…' },
-		async () => {
-			const data = await rawGraphqlOrThrow(session, CRATE_LIST_QUERY, { orgId, limit: CRATE_LIST_LIMIT });
-			return (data as { crates?: CrateListRow[] | null } | undefined)?.crates ?? [];
-		},
+		async () => editorDataClient.listCrates({ sessionId, orgId }),
 	);
 
 	const items = crateQuickPickItems(crates);
@@ -151,8 +146,9 @@ export class InstallCrate extends GenericCommand {
 		const crateId = await pickCrate(session, org.id);
 		if (crateId === undefined) return;
 
-		const data = await rawGraphqlOrThrow(session, CRATE_DETAIL_QUERY, { crateId, orgId: org.id });
-		const crate = parseCrateDetail(data);
+		const sessionId = session.profile.user.id;
+		if (!sessionId) throw new Error('Session has no user id.');
+		const crate = await editorDataClient.getCrateDetail({ sessionId, orgId: org.id, crateId });
 		if (!crate) {
 			log.notifyError(`Crate ${crateId} was not found or is not visible to this session.`);
 			return;
@@ -182,18 +178,11 @@ export class InstallCrate extends GenericCommand {
 			enableTriggers = triggerChoice.enabled;
 		}
 
-		// Build the input before confirming so the preview shows exactly what will
-		// run — including the resolved workflow name when the input box was cleared.
-		const input = buildUnpackInput(crate, {
-			orgId: org.id,
-			workflowName: workflowName || undefined,
-			tokenValues,
-			enableTriggers,
-		});
+		const resolvedWorkflowName = workflowName || crate.workflowName || crate.name;
 
 		const detailLines = [
 			`Organization: ${org.name}`,
-			`Workflow name: ${input.workflow.name}`,
+			`Workflow name: ${resolvedWorkflowName}`,
 			crate.crateTriggers.length > 0
 				? `Triggers: ${crate.crateTriggers.length}, installed ${enableTriggers ? 'enabled' : 'disabled'}`
 				: undefined,
@@ -223,12 +212,24 @@ export class InstallCrate extends GenericCommand {
 						controller.abort();
 					});
 					try {
-						return await runUnpackCrate({
-							session,
-							input,
-							signal: controller.signal,
-							onProgress: label => progress.report({ message: label }),
-						});
+						if (!sessionId) throw new Error('Session has no user id.');
+						return await editorDataClient.unpackCrate(
+							{
+								sessionId,
+								orgId: org.id,
+								crateId,
+								workflowName: workflowName || undefined,
+								tokenValues,
+								enableTriggers,
+							},
+							{
+								signal: controller.signal,
+								onEvent: event => {
+									const label = (event as { label?: unknown })?.label;
+									if (typeof label === 'string') progress.report({ message: label });
+								},
+							},
+						);
 					} finally {
 						cancelListener.dispose();
 					}
@@ -239,7 +240,7 @@ export class InstallCrate extends GenericCommand {
 					? ` Reminder — this Crate expects org variable(s): ${crate.requiredOrgVariables.join(', ')}.`
 					: '';
 			log.notifyInfo(
-				`Installed Crate "${crate.name}" into ${org.name} as workflow "${input.workflow.name}"` +
+				`Installed Crate "${crate.name}" into ${org.name} as workflow "${resolvedWorkflowName}"` +
 					(outcome.id ? ` (${outcome.id})` : '') +
 					`.${suffix}`,
 			);

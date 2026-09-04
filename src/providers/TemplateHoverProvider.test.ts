@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -97,7 +98,7 @@ suite('Unit: TemplateHoverProvider', () => {
 			]),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		TemplateMetadataStore.init();
 		await new Promise(resolve => setTimeout(resolve, 100));
 

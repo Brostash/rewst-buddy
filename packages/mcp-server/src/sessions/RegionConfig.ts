@@ -1,0 +1,39 @@
+import { getRuntimeHost, log } from '../host';
+
+export interface RegionConfig {
+	name: string;
+	cookieName: string;
+	graphqlUrl: string;
+	loginUrl: string;
+	subscriptionsUrl?: string;
+}
+
+// The WS endpoint lives at /subscriptions, not /graphql (a WS upgrade against
+// /graphql falls through to Apollo's HTTP handler and returns 400).
+export function getSubscriptionsUrl(config: RegionConfig): string {
+	if (config.subscriptionsUrl) return config.subscriptionsUrl;
+
+	const url = new URL(config.graphqlUrl);
+	url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+	url.pathname = '/subscriptions';
+	url.search = '';
+	url.hash = '';
+	return url.toString();
+}
+
+export function getRegionConfigs(): RegionConfig[] {
+	const regions = getRuntimeHost().getSetting<RegionConfig[]>('regions', [
+		{
+			name: 'North America',
+			cookieName: 'appSession',
+			graphqlUrl: 'https://api.rewst.io/graphql',
+			loginUrl: 'https://app.rewst.io',
+		},
+	]);
+
+	if (regions.length === 0)
+		throw log.notifyError(
+			`No regions were found in runtime host settings. Sessions cannot be created if there are no defined regions`,
+		);
+	return regions;
+}

@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -54,7 +55,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		const result = await RewstQuickDiffProvider.provideOriginalResource(uri);
@@ -67,7 +68,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		await RewstQuickDiffProvider.provideOriginalResource(uri);
@@ -80,7 +81,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		const first = await RewstQuickDiffProvider.provideOriginalResource(uri);
@@ -101,7 +102,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		await RewstQuickDiffProvider.provideOriginalResource(uri);
@@ -121,7 +122,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 			if (calls === 1) return { data: Fixtures.getTemplateQuery({ id: 't1', body: '// first body' }) };
 			return { error: Fixtures.networkError('engine unavailable') };
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		const first = await RewstQuickDiffProvider.provideOriginalResource(uri);
@@ -137,7 +138,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		RewstQuickDiffProvider.init();
@@ -160,7 +161,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		wrapper.when('getTemplate', (vars: any) => ({
 			data: Fixtures.getTemplateQuery({ id: vars.id, body: `// body for ${vars.id}` }),
 		}));
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		RewstQuickDiffProvider.init();
@@ -187,7 +188,7 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
 
 		RewstQuickDiffProvider.init();

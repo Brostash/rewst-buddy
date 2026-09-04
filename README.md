@@ -57,8 +57,8 @@ Full detail → [docs/features.md](docs/features.md).
 
 Rewst does not publish a public API, so this extension authenticates the same way the Rewst web app does: with your browser session cookie (`appSession`, or the equivalent cookie for your region — see [Multi-Region Setup](docs/reference.md#multi-region-setup)). A companion [browser extension](https://github.com/totallynotjon/rewst-buddy-browser) automates the cookie transfer (sideload required — not yet on the Chrome Web Store).
 
-- Your cookie is stored only in VS Code's built-in [SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage) (OS-level encrypted storage).
-- No data is sent anywhere other than Rewst's own API.
+- When VS Code owns the backend, your cookie is stored in VS Code's built-in [SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage). The standalone MCP package keeps credentials in memory by default and supports passphrase-encrypted persistence.
+- The backend connects to Rewst's API. Data returned through MCP is also subject to the connected client's data-handling policy.
 - Sessions inherit your current Rewst permissions — the extension can do nothing you can't already do in the browser.
 
 If you have security concerns, the codebase is MIT-licensed and open for audit — please [open an issue](https://github.com/totallynotjon/rewst-buddy/issues) with any findings.
@@ -75,3 +75,15 @@ Commands, settings, sidebar/status-bar walkthroughs, and multi-region setup: [do
 ## License
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Standalone MCP server
+
+The Rewst backend also lives in an independently versioned npm package in
+[`packages/mcp-server`](packages/mcp-server/README.md). After publication, any
+stdio MCP client can launch it with `npx --yes rewst-buddy-mcp@latest`; it can
+also run as a persistent Streamable HTTP server on localhost. VS Code is optional.
+
+The extension and standalone package reuse the first authenticated Rewst Buddy
+owner on port 27121, so sessions, scope, and policy stay in one place. See the
+[standalone MCP guide](packages/mcp-server/README.md) for authentication, client
+configuration, GraphQL access, write approvals, and troubleshooting.

@@ -1,7 +1,7 @@
 import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { WorkingScopeManager } from './WorkingScopeManager';
+import { WorkingScopeManager } from '../../packages/mcp-server/src/models/WorkingScopeManager';
 
 const { suite, test, setup, teardown } = Mocha;
 

@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -80,7 +81,7 @@ suite('Unit: LinkTemplateInteractive', () => {
 
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org One' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		await assert.rejects(() => new LinkTemplateInteractive().execute([uri]), /Already linked/);
 
@@ -110,7 +111,7 @@ suite('Unit: LinkTemplateInteractive', () => {
 			}),
 		}));
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubQuickPick(templateId);
 
 		await new LinkTemplateInteractive().execute([uri]);
@@ -134,7 +135,7 @@ suite('Unit: LinkTemplateInteractive', () => {
 		const uri = writeFile('cancel.j2', 'body');
 		const org = Fixtures.orgModel({ id: 'org-3', name: 'Org Three' });
 		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubQuickPick(undefined);
 
 		await new LinkTemplateInteractive().execute([uri]);

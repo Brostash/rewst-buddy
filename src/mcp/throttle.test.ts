@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { SessionManager } from '@sessions';
+import { SessionManager } from '../../packages/mcp-server/src/sessions';
 import { initTestEnvironment } from '@test';
 import { SlidingWindowThrottle } from './throttle';
 

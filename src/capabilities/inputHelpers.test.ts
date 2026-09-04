@@ -25,7 +25,7 @@ function delay(ms: number): Promise<void> {
 function makeSession(result: { data?: unknown; errors?: unknown }) {
 	return {
 		rawGraphql: async (_query: string, _vars?: unknown) => result,
-	} as unknown as import('@sessions').Session;
+	} as unknown as import('../../packages/mcp-server/src/sessions').Session;
 }
 
 suite('Unit: inputHelpers — throwOnGraphqlErrors', () => {
@@ -94,7 +94,7 @@ suite('Unit: inputHelpers — rawGraphqlOrThrow', () => {
 				capturedVars = vars;
 				return { data: {}, errors: null };
 			},
-		} as unknown as import('@sessions').Session;
+		} as unknown as import('../../packages/mcp-server/src/sessions').Session;
 		await rawGraphqlOrThrow(session, 'query {}', { orgId: 'abc' });
 		assert.deepStrictEqual(capturedVars, { orgId: 'abc' });
 	});

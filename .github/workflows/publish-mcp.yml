@@ -1,0 +1,99 @@
+name: Publish MCP package
+
+# The standalone MCP server has its own version and tag namespace. A maintainer
+# bumps packages/mcp-server/package.json in a reviewed PR, then pushes the
+# matching mcp-vX.Y.Z tag from main. The tag is the publish approval.
+
+on:
+    push:
+        tags:
+            - 'mcp-v*.*.*'
+
+permissions:
+    contents: read
+
+concurrency:
+    group: publish-mcp-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        environment: npm
+        permissions:
+            contents: read
+            id-token: write # npm trusted publishing and provenance
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 0
+                  persist-credentials: false
+
+            - name: Verify the tagged commit is on main
+              run: |
+                  if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                    echo "::error::MCP releases must tag a commit already merged to main."
+                    exit 1
+                  fi
+
+            # Release jobs intentionally do not restore dependency caches. This
+            # job can publish to npm, so it must not consume a cache populated by
+            # a less-privileged pull request.
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 24
+
+            # Trusted publishing requires npm >=11.5.1. Pin the CLI instead of
+            # relying on whichever npm release happens to ship with Node.
+            - name: Install trusted-publishing npm CLI
+              run: npm install --global npm@11.15.0
+
+            - run: npm ci
+
+            - name: Verify the tag matches the MCP package version
+              run: |
+                  TAG_VERSION="${GITHUB_REF_NAME#mcp-v}"
+                  PACKAGE_VERSION="$(node -p "require('./packages/mcp-server/package.json').version")"
+                  if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+                    echo "::error::Tag mcp-v$TAG_VERSION does not match rewst-buddy-mcp version $PACKAGE_VERSION."
+                    exit 1
+                  fi
+
+            - name: Lint
+              run: npm run lint
+
+            - name: Type-check
+              run: npm run type-check
+
+            - name: Test the standalone package
+              run: npm run test:mcp
+
+            - name: Inspect the publish candidate
+              run: npm pack --workspace rewst-buddy-mcp --dry-run
+
+            - name: Select npm authentication
+              id: npm-auth
+              env:
+                  BOOTSTRAP_NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+              run: |
+                  if [ -n "$BOOTSTRAP_NPM_TOKEN" ]; then
+                    echo "mode=token" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "mode=oidc" >> "$GITHUB_OUTPUT"
+                  fi
+
+            # NPM_TOKEN is needed only to bootstrap the unclaimed package. The
+            # temporary npmrc contains the environment placeholder, not the token.
+            - name: Publish rewst-buddy-mcp with bootstrap token
+              if: steps.npm-auth.outputs.mode == 'token'
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+              run: |
+                  printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$RUNNER_TEMP/npmrc"
+                  npm publish --workspace rewst-buddy-mcp --access public --provenance --userconfig "$RUNNER_TEMP/npmrc"
+
+            # Keep NODE_AUTH_TOKEN entirely out of the OIDC step. npm discovers
+            # the GitHub identity token and exchanges it for a short-lived token.
+            - name: Publish rewst-buddy-mcp with trusted publishing
+              if: steps.npm-auth.outputs.mode == 'oidc'
+              run: npm publish --workspace rewst-buddy-mcp --access public --provenance

@@ -14,36 +14,36 @@ function itemOf(bar: WorkingScopeStatusBar): vscode.StatusBarItem {
 suite('Unit: WorkingScopeStatusBar', () => {
 	let bar: WorkingScopeStatusBar | undefined;
 
-	setup(() => {
+	setup(async () => {
 		initTestEnvironment();
 		WorkingScopeManager._resetForTesting();
 	});
 
-	teardown(() => {
+	teardown(async () => {
 		bar?.dispose();
 		bar = undefined;
 		WorkingScopeManager._resetForTesting();
 	});
 
-	test('shows the unset state and wires the Set Working Scope command', () => {
+	test('shows the unset state and wires the Set Working Scope command', async () => {
 		bar = new WorkingScopeStatusBar();
 		const item = itemOf(bar);
 		assert.match(item.text, /unset/);
 		assert.strictEqual(item.command, 'rewst-buddy.SetWorkingScope');
 	});
 
-	test('refreshes to show pinned orgs and workflows on a scope change', () => {
+	test('refreshes to show pinned orgs and workflows on a scope change', async () => {
 		bar = new WorkingScopeStatusBar();
-		WorkingScopeManager.setOrgs(['org-1']);
-		WorkingScopeManager.setWorkflows(['wf-1', 'wf-2']);
+		await WorkingScopeManager.setOrgs(['org-1']);
+		await WorkingScopeManager.setWorkflows(['wf-1', 'wf-2']);
 		const item = itemOf(bar);
 		assert.match(item.text, /1 org\b/);
 		assert.match(item.text, /2 workflows/);
 	});
 
-	test('tooltip shows workflow name when available, raw id as fallback', () => {
+	test('tooltip shows workflow name when available, raw id as fallback', async () => {
 		bar = new WorkingScopeStatusBar();
-		WorkingScopeManager.applyChange({ workflows: ['wf-named', 'wf-raw'] }, [
+		await WorkingScopeManager.applyChange({ workflows: ['wf-named', 'wf-raw'] }, [
 			{ id: 'wf-named', name: 'My Workflow' },
 		]);
 		const tooltip = itemOf(bar).tooltip as vscode.MarkdownString;
@@ -52,14 +52,14 @@ suite('Unit: WorkingScopeStatusBar', () => {
 		assert.ok(!tooltip.value.includes('wf-raw (wf-raw)'), 'no double-id for unnamed workflow');
 	});
 
-	test('returns to the unset label when the scope is cleared', () => {
+	test('returns to the unset label when the scope is cleared', async () => {
 		bar = new WorkingScopeStatusBar();
-		WorkingScopeManager.setOrgs(['org-1']);
-		WorkingScopeManager.clear();
+		await WorkingScopeManager.setOrgs(['org-1']);
+		await WorkingScopeManager.clear();
 		assert.match(itemOf(bar).text, /unset/);
 	});
 
-	test('dispose cleans up without throwing', () => {
+	test('dispose cleans up without throwing', async () => {
 		const local = new WorkingScopeStatusBar();
 		assert.doesNotThrow(() => local.dispose());
 	});

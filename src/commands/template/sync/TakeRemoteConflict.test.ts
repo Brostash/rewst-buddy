@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
@@ -53,7 +54,7 @@ suite('Unit: TakeRemoteConflict', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = {
 			uri,
@@ -80,8 +81,16 @@ suite('Unit: TakeRemoteConflict', () => {
 		);
 		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
 		// to succeed — a non-open mock document's save fails for real otherwise.
-		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
-		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
+		const restoreApply = stub(
+			vscode.workspace,
+			'applyEdit',
+			(async () => true) as typeof vscode.workspace.applyEdit,
+		);
+		const restoreSave = stub(
+			vscode.workspace,
+			'save',
+			(async (u: vscode.Uri) => u) as typeof vscode.workspace.save,
+		);
 
 		try {
 			const syncPromise = SyncManager.syncTemplate(doc);

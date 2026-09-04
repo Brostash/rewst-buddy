@@ -7,7 +7,7 @@ export class ClearWorkingScope extends GenericCommand {
 	commandName = 'ClearWorkingScope';
 
 	async execute(): Promise<void> {
-		WorkingScopeManager.clear();
+		await WorkingScopeManager.clear();
 		log.notifyInfo('Working scope cleared. With nothing pinned, writes are blocked until you set a scope.');
 	}
 }

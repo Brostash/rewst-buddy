@@ -1,37 +1,13 @@
-import { clampConversationMessage, log } from '@utils';
-import { createClient } from 'graphql-ws';
-import vscode from 'vscode';
-import WebSocket from 'ws';
-import { getSubscriptionsUrl, RegionConfig } from '../RegionConfig';
+import { invoke } from '../../backend/operations';
+import { log } from '../../../packages/mcp-server/src/host';
+import { clampConversationMessage } from '../../../packages/mcp-server/src/sessions/conversation/messageBudget';
 import type Session from '../Session';
-import { ConversationEventMapper, type ConversationEvent, type RawConversationPayload } from './conversationEvents';
+import type { ConversationEvent } from './conversationEvents';
 
-const DEFAULT_INACTIVITY_TIMEOUT_MS = 240_000;
-
-// Live-verified document (docs/dev/rewst-ai-api.md). $resumeRequestId is the
-// web app's reattach/continue handle — passed to resume a paused request (e.g.
-// after an approval_required); null for a fresh turn.
-const CONVERSATION_MESSAGE_SUBSCRIPTION = `
-	subscription ($message: String!, $orgId: ID!, $conversationId: ID, $conversationType: String, $metadata: JSON, $resumeRequestId: ID) {
-		conversationMessage(
-			message: $message
-			orgId: $orgId
-			conversationId: $conversationId
-			conversationType: $conversationType
-			metadata: $metadata
-			resumeRequestId: $resumeRequestId
-		) {
-			status
-			error
-			conversation_id
-			metadata
-			message {
-				id
-				content
-				role
-			}
-		}
-	}`;
+export interface CancellationToken {
+	isCancellationRequested?: boolean;
+	onCancellationRequested?: (listener: () => unknown) => { dispose(): void };
+}
 
 export interface AskOptions {
 	session: Session;
@@ -39,22 +15,131 @@ export interface AskOptions {
 	message: string;
 	conversationId?: string;
 	conversationType?: string;
-	/** Reattach to a paused request (e.g. to continue after approval_required). */
 	resumeRequestId?: string;
-	cancellation?: vscode.CancellationToken;
+	cancellation?: CancellationToken | AbortSignal;
 	inactivityTimeoutMs?: number;
+}
+
+export interface ConversationVariables extends Record<string, unknown> {
+	message: string;
+	orgId: string;
+	conversationId: string | null;
+	conversationType: string;
+	metadata: { orgId: string };
+	resumeRequestId: string | null;
+}
+
+/** Build the portable subscription payload used by the trusted runtime. */
+export function conversationVariables(options: AskOptions, orgId: string): ConversationVariables {
+	const clamped = clampConversationMessage(options.message);
+	if (clamped.trimmed > 0)
+		log.info(`askRewstAi: message clamped to the backend limit (dropped ${clamped.trimmed} chars)`);
+	return {
+		message: clamped.message,
+		orgId,
+		conversationId: options.conversationId ?? null,
+		conversationType: options.conversationType ?? 'HELP_DOCS',
+		metadata: { orgId },
+		resumeRequestId: options.resumeRequestId ?? null,
+	};
+}
+
+let streamCounter = 0;
+function nextStreamId(): string {
+	streamCounter = (streamCounter + 1) % Number.MAX_SAFE_INTEGER;
+	return `editor-${Date.now().toString(36)}-${streamCounter.toString(36)}`;
+}
+
+function cancelled(token: AskOptions['cancellation']): boolean {
+	return !!token && ('aborted' in token ? token.aborted === true : token.isCancellationRequested === true);
+}
+
+function isAbortSignal(token: AskOptions['cancellation']): token is AbortSignal {
+	return !!token && typeof (token as AbortSignal).addEventListener === 'function' && 'aborted' in token;
+}
+
+function subscribeCancellation(token: AskOptions['cancellation'], abort: () => void): { dispose(): void } | undefined {
+	if (!token) return undefined;
+	if (isAbortSignal(token)) {
+		token.addEventListener('abort', abort, { once: true });
+		return { dispose: () => token.removeEventListener('abort', abort) };
+	}
+	return token.onCancellationRequested?.(abort);
+}
+
+/** Sends one conversation through the trusted runtime and yields its events. */
+export async function* askRewstAi(options: AskOptions): AsyncGenerator<ConversationEvent> {
+	if (cancelled(options.cancellation)) return;
+	const streamId = nextStreamId();
+	const queue: ConversationEvent[] = [];
+	let wake: (() => void) | undefined;
+	let done = false;
+	let cancelledByUser = false;
+	let failure: unknown;
+	const push = (raw: unknown) => {
+		if (!raw || typeof raw !== 'object') return;
+		const payload = raw as { streamId?: unknown; event?: unknown };
+		if (payload.streamId !== streamId || !payload.event || typeof payload.event !== 'object') return;
+		queue.push(payload.event as ConversationEvent);
+		wake?.();
+		wake = undefined;
+	};
+	// Own the operation signal so an early consumer return can stop this turn
+	// without cancelling the caller's token, which may be reused for a retry.
+	const adapter = new AbortController();
+	const cancelListener = subscribeCancellation(options.cancellation, () => {
+		cancelledByUser = true;
+		adapter.abort();
+		done = true;
+		wake?.();
+		wake = undefined;
+	});
+	const operation = invoke<{ streamId: string }>(
+		'conversation.ask',
+		{
+			sessionId: options.session.sessionId ?? options.session.profile.user.id,
+			orgId: options.orgId,
+			message: options.message,
+			streamId,
+			...(options.conversationId === undefined ? {} : { conversationId: options.conversationId }),
+			...(options.conversationType === undefined ? {} : { conversationType: options.conversationType }),
+			...(options.resumeRequestId === undefined ? {} : { resumeRequestId: options.resumeRequestId }),
+		},
+		{ onEvent: push, signal: adapter.signal },
+	);
+	void operation
+		.catch(error => {
+			failure = error;
+		})
+		.finally(() => {
+			done = true;
+			wake?.();
+			wake = undefined;
+		});
+	try {
+		while (!done || queue.length > 0) {
+			if (queue.length === 0)
+				await new Promise<void>(resolve => {
+					wake = resolve;
+				});
+			while (queue.length > 0) yield queue.shift()!;
+		}
+		if (!cancelledByUser && failure) throw failure;
+	} finally {
+		cancelListener?.dispose();
+		adapter.abort();
+	}
 }
 
 interface RunOptions {
 	inactivityTimeoutMs: number;
-	/** Tears down the underlying transport when the loop gives up waiting. */
 	abort?: () => void;
 }
 
 const TIMED_OUT = Symbol('timed-out');
 
 async function nextWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
-	let timer: NodeJS.Timeout | undefined;
+	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		return await Promise.race([
 			promise,
@@ -63,30 +148,26 @@ async function nextWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T | 
 			}),
 		]);
 	} finally {
-		clearTimeout(timer);
+		if (timer !== undefined) clearTimeout(timer);
 	}
 }
 
-/**
- * Core subscription loop, separated from transport wiring so it can be unit
- * tested with a scripted iterable. Terminates after the first complete/error
- * event; the inactivity timeout resets on every received payload.
- */
+/** Pure progress loop retained for callers that already have mapped payloads. */
 export async function* runConversation(
-	payloads: AsyncIterable<RawConversationPayload | null | undefined>,
-	mapper: ConversationEventMapper,
+	payloads: AsyncIterable<import('./conversationEvents').RawConversationPayload | null | undefined>,
+	mapper: import('./conversationEvents').ConversationEventMapper,
 	options: RunOptions,
 ): AsyncGenerator<ConversationEvent> {
 	const iterator = payloads[Symbol.asyncIterator]();
 	try {
 		for (;;) {
-			let next: IteratorResult<RawConversationPayload | null | undefined> | typeof TIMED_OUT;
+			let next:
+				| IteratorResult<import('./conversationEvents').RawConversationPayload | null | undefined>
+				| typeof TIMED_OUT;
 			try {
 				const step = iterator.next();
 				next = await nextWithTimeout(step, options.inactivityTimeoutMs);
 				if (next === TIMED_OUT) {
-					// The dangling next() settles (or rejects) once abort tears
-					// down the transport; swallow it to avoid unhandled rejections.
 					step.catch(() => {});
 					options.abort?.();
 					yield {
@@ -99,130 +180,13 @@ export async function* runConversation(
 				yield { kind: 'error', message: error instanceof Error ? error.message : String(error) };
 				return;
 			}
-
 			if (next.done) return;
-
 			for (const event of mapper.map(next.value)) {
 				yield event;
 				if (event.kind === 'complete' || event.kind === 'error') return;
 			}
 		}
 	} finally {
-		// Fire-and-forget: a source stalled mid-await would never settle return(),
-		// and the transport teardown (abort/dispose) is what actually frees it.
 		Promise.resolve(iterator.return?.(undefined)).catch(() => {});
-	}
-}
-
-// Secrets hold whatever cookie string validated at session creation — either a
-// full "name=value" cookie or a bare token.
-function toCookieHeader(stored: string, region: RegionConfig): string {
-	return stored.includes('=') ? stored : `${region.cookieName}=${stored}`;
-}
-
-interface SubscriptionResult {
-	data?: { conversationMessage?: RawConversationPayload | null } | null;
-	errors?: readonly { message: string }[];
-}
-
-async function* payloadsOf(
-	results: AsyncIterable<SubscriptionResult>,
-): AsyncIterable<RawConversationPayload | null | undefined> {
-	for await (const result of results) {
-		if (result.errors?.length) {
-			throw new Error(result.errors.map(e => e.message).join('; '));
-		}
-		yield result.data?.conversationMessage;
-	}
-}
-
-export interface ConversationVariables extends Record<string, unknown> {
-	message: string;
-	orgId: string;
-	conversationId: string | null;
-	conversationType: string;
-	metadata: { orgId: string };
-	resumeRequestId: string | null;
-}
-
-/**
- * Subscription variables for one turn. Separated from the transport so the wire's
- * last-defense clamp is testable: the backend rejects an over-long message
- * outright, failing the whole turn, and callers budget their own pieces
- * (utils/messageBudget.ts), so no path may reach the socket unclamped (#189).
- */
-export function conversationVariables(options: AskOptions, orgId: string): ConversationVariables {
-	const clamped = clampConversationMessage(options.message);
-	if (clamped.trimmed > 0) {
-		log.info(`askRewstAi: message clamped to the backend limit (dropped ${clamped.trimmed} chars)`);
-	}
-	return {
-		message: clamped.message,
-		orgId,
-		conversationId: options.conversationId ?? null,
-		conversationType: options.conversationType ?? 'HELP_DOCS',
-		// Without metadata.orgId the server registers the request and then
-		// silently never processes it (docs/dev/rewst-ai-api.md).
-		metadata: { orgId },
-		resumeRequestId: options.resumeRequestId ?? null,
-	};
-}
-
-/**
- * Ask RoboRewsty a question over the conversationMessage subscription.
- * Yields typed events until complete/error; cancellation tears down the socket.
- */
-export async function* askRewstAi(options: AskOptions): AsyncGenerator<ConversationEvent> {
-	const { session, orgId } = options;
-	// Secrets are keyed by the session's primary org — correct even when the
-	// question targets a managed sub-org.
-	const cookie = toCookieHeader(await session.getCookies(), session.profile.region);
-	const url = getSubscriptionsUrl(session.profile.region);
-
-	class CookieWebSocket extends WebSocket {
-		constructor(address: string | URL, protocols?: string | string[]) {
-			super(address, protocols, { headers: { cookie } });
-		}
-	}
-
-	const client = createClient({
-		url,
-		webSocketImpl: CookieWebSocket,
-		retryAttempts: 0,
-		lazy: true,
-		on: {
-			connected: () => log.debug('askRewstAi: ws connected', { url }),
-			closed: () => log.debug('askRewstAi: ws closed'),
-			error: err => log.debug('askRewstAi: ws error', err),
-		},
-	});
-
-	const dispose = () => {
-		Promise.resolve(client.dispose()).catch(() => {});
-	};
-	const cancelListener = options.cancellation?.onCancellationRequested(dispose);
-
-	const variables = conversationVariables(options, orgId);
-
-	log.debug('askRewstAi: starting subscription', {
-		orgId,
-		conversationId: variables.conversationId,
-		conversationType: variables.conversationType,
-		resumeRequestId: variables.resumeRequestId,
-	});
-
-	try {
-		if (options.cancellation?.isCancellationRequested) return;
-		const results = client.iterate<SubscriptionResult['data']>({
-			query: CONVERSATION_MESSAGE_SUBSCRIPTION,
-			variables,
-		});
-		yield* runConversation(payloadsOf(results), new ConversationEventMapper(), {
-			inactivityTimeoutMs: options.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS,
-			abort: dispose,
-		});
-	} finally {
-		cancelListener?.dispose();
-		dispose();
 	}
 }

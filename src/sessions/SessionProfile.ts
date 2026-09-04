@@ -1,6 +1,6 @@
-import { Org } from '@models';
-import { UserFragment } from '@sessions';
-import { RegionConfig } from './RegionConfig';
+import type { Org } from '../../packages/mcp-server/src/sessions/types';
+import type { UserFragment } from './graphql/sdk';
+import type { RegionConfig } from './RegionConfig';
 
 export default interface SessionProfile {
 	region: RegionConfig;

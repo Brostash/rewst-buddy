@@ -1,3 +1,4 @@
+import { installMockSessionsAndWait as installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -46,7 +47,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
 			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'existing-link'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -86,7 +87,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
 			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
-			SessionManager._setSessionsForTesting([session1, session2]);
+			await installMockSessions([session1, session2]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -125,7 +126,7 @@ suite('Unit: TemplateMetadataStore', () => {
 			});
 
 			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 			TemplateMetadataStore.init();
 
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -162,7 +163,7 @@ suite('Unit: TemplateMetadataStore', () => {
 			});
 
 			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'existing-link'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -194,7 +195,7 @@ suite('Unit: TemplateMetadataStore', () => {
 				return { data: Fixtures.listTemplatesQuery([Fixtures.template({ orgId: vars.orgId })]) };
 			});
 
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -223,7 +224,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
 			LinkManager.addLink(makeTemplateLink(org3.id, org3.name, 'link-org3'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 			TemplateMetadataStore.init();
 
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -255,7 +256,7 @@ suite('Unit: TemplateMetadataStore', () => {
 				delay: 200,
 			});
 
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 			TemplateMetadataStore.init();
 
 			// Reset while load is in flight
@@ -294,12 +295,12 @@ suite('Unit: TemplateMetadataStore', () => {
 				};
 			});
 
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 			TemplateMetadataStore.init();
 
 			// Fire a session saved event while first load is in progress
 			await new Promise(resolve => setTimeout(resolve, 20));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			// Wait for both loads to complete
 			await new Promise(resolve => setTimeout(resolve, 300));
@@ -334,7 +335,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'link-1'));
 			TemplateMetadataStore._setDeferredDelayForTesting(200);
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 
@@ -380,7 +381,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'link-1'));
 			TemplateMetadataStore._setDeferredDelayForTesting(100);
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 50));
@@ -416,7 +417,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'link-1'));
 			TemplateMetadataStore._setDeferredDelayForTesting(100);
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 50));
@@ -451,7 +452,7 @@ suite('Unit: TemplateMetadataStore', () => {
 			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
 
 			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 			TemplateMetadataStore.init();
 
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -485,7 +486,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
 			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
-			SessionManager._setSessionsForTesting([session1, session2]);
+			await installMockSessions([session1, session2]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -527,7 +528,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
 			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
-			SessionManager._setSessionsForTesting([session1, session2]);
+			await installMockSessions([session1, session2]);
 
 			TemplateMetadataStore.init();
 			// Remove while org 1's listTemplates response is still pending.
@@ -560,7 +561,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([template]) });
 			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -589,7 +590,7 @@ suite('Unit: TemplateMetadataStore', () => {
 			const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
 			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -618,7 +619,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
 			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
-			SessionManager._setSessionsForTesting([session]);
+			await installMockSessions([session]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));
@@ -647,7 +648,7 @@ suite('Unit: TemplateMetadataStore', () => {
 
 			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
 			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
-			SessionManager._setSessionsForTesting([session1, session2]);
+			await installMockSessions([session1, session2]);
 
 			TemplateMetadataStore.init();
 			await new Promise(resolve => setTimeout(resolve, 100));

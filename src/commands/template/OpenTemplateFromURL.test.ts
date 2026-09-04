@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -84,7 +85,7 @@ suite('Unit: OpenTemplateFromURL', () => {
 				body: 'fetched body',
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubURLInput(templateURL);
 
 		const fixedUri = vscode.Uri.file('/ws/new-from-url.j2');

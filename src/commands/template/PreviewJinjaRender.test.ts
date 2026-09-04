@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 /**
  * Unit tests for PreviewJinjaRender command.
  *
@@ -142,7 +143,7 @@ suite('Unit: PreviewJinjaRender', () => {
 
 		const org = Fixtures.orgModel({ id: 'org-real', name: 'Real Org' });
 		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		let resolvedOrgId: string | undefined;
 		const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async (orgId: string) => {
@@ -173,7 +174,7 @@ suite('Unit: PreviewJinjaRender', () => {
 		linkFile(uri, org.id, 'tpl-1');
 
 		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const showCalls: string[] = [];
 		const restoreShow = stub(vscode.window, 'showTextDocument', (async (docOrUri: any) => {

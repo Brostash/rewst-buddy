@@ -1,5 +1,5 @@
 import { withGeneratedArgs, type ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
-import type { Capability, CapabilityContext } from './Capability';
+import type { Capability, CapabilityContext } from './EditorCapability';
 
 /**
  * Factories for the common capability shapes so definitions stay one-liners:

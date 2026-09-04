@@ -1,2 +1,2 @@
 # Auto-generated files
-src/sessions/graphql/generated/
+packages/mcp-server/src/sessions/graphql/generated/

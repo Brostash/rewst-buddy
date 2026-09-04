@@ -1,6 +1,6 @@
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover, type CapabilityContext } from '@capabilities';
 import { LinkManager } from '@models';
-import type { FullTemplateFragment, Session } from '@sessions';
+import type { FullTemplateFragment, Session } from '../../packages/mcp-server/src/sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';

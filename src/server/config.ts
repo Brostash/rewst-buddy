@@ -1,12 +1,14 @@
+import { getSharedConnection } from '../backend/sharedConnection';
 import vscode from 'vscode';
 import { ServerConfig } from './types';
 
 export function getServerConfig(): ServerConfig {
 	const config = vscode.workspace.getConfiguration('rewst-buddy.server');
+	const shared = getSharedConnection();
 	return {
 		enabled: config.get<boolean>('enabled', false),
-		port: config.get<number>('port', 27121),
-		host: config.get<string>('host', '127.0.0.1'),
+		port: shared?.descriptor.port ?? config.get<number>('port', 27121),
+		host: shared ? '127.0.0.1' : config.get<string>('host', '127.0.0.1'),
 	};
 }
 

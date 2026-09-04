@@ -1,3 +1,9 @@
+import { SessionManager as EditorSessions } from '../../sessions/SessionManager';
+import { WorkingScopeManager as EditorScope } from '../../models/WorkingScopeManager';
+import { applyTemplateChanged } from '../../backend/editorEvents';
+import { initializeBackend } from '../../backend/operations';
+let backendInitialized = false;
+import { configureRuntimeHost } from '../../../packages/mcp-server/src/host';
 import vscode from 'vscode';
 import { log } from '@utils';
 
@@ -88,5 +94,20 @@ export function initTestEnvironment(): vscode.ExtensionContext {
 	const { context } = require('@global');
 	context.init(mockContext);
 	log.init();
+	if (!backendInitialized) {
+		initializeBackend({ shared: false });
+		EditorSessions.init();
+		EditorScope.init();
+		backendInitialized = true;
+	}
+	configureRuntimeHost({
+		state: mockContext.globalState,
+		secrets: mockContext.secrets,
+		templateChanged: applyTemplateChanged,
+		getSetting: (key, fallback) => vscode.workspace.getConfiguration('rewst-buddy').get(key, fallback),
+		log: (level, message, ...details) => {
+			log[level](message, ...details);
+		},
+	});
 	return mockContext;
 }

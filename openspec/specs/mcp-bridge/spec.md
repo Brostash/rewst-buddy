@@ -18,6 +18,11 @@ Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`, `mcpServer.ts`,
 `src/models/WorkingScopeManager.ts`, `src/ui/chat/tools/graphqlTool.ts`,
 `src/ui/chat/tools/workflowTools.ts`, `src/extension.ts`.
 
+The backend package and embedded client boundary are specified in
+[`standalone-mcp`](../standalone-mcp/spec.md). References below to VS Code
+approval describe the extension host; standalone approval follows its explicit
+operator policy.
+
 ## Requirements
 
 ### Requirement: Enable the external bridge and run a localhost server

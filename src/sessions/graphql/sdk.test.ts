@@ -9,8 +9,8 @@
  */
 import { GraphQLClient } from 'graphql-request';
 import { setup, suite, test } from '../../test/tdd';
-import type { SdkFunctionWrapper } from './sdk';
-import { getSdk } from './sdk';
+import type { SdkFunctionWrapper } from '../../../packages/mcp-server/src/sessions/graphql/sdk';
+import { getSdk } from '../../../packages/mcp-server/src/sessions/graphql/sdk';
 
 interface RecordedCall {
 	operationName: string;

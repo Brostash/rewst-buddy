@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -80,7 +81,7 @@ suite('Unit: CreateTemplate', () => {
 			}),
 		}));
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubPrimaryOrgQuickPick();
 		stubInputBox('my-template'); // defaults to file base name, but confirm explicit value works too
 
@@ -112,7 +113,7 @@ suite('Unit: CreateTemplate', () => {
 
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org One' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		await assert.rejects(() => new CreateTemplate().execute([uri]), /Already linked/);
 
@@ -123,7 +124,7 @@ suite('Unit: CreateTemplate', () => {
 		const uri = writeFile('cancel-org.j2', 'body');
 		const org = Fixtures.orgModel({ id: 'org-2', name: 'Org Two' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		stub(vscode.window, 'showQuickPick', (async () => undefined) as unknown as typeof vscode.window.showQuickPick);
 
@@ -137,7 +138,7 @@ suite('Unit: CreateTemplate', () => {
 		const uri = writeFile('cancel-name.j2', 'body');
 		const org = Fixtures.orgModel({ id: 'org-3', name: 'Org Three' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		stubPrimaryOrgQuickPick();
 		stubInputBox(undefined);

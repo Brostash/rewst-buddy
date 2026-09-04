@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { Server } from '@server';
-import { SessionManager } from '@sessions';
+import { SessionManager } from '../../packages/mcp-server/src/sessions';
 import { initTestEnvironment } from '@test';
 import { McpServerController } from './McpServerController';
 

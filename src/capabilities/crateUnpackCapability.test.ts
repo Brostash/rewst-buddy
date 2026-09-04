@@ -1,8 +1,8 @@
-import type { Session } from '@sessions';
+import type { Session } from '../../packages/mcp-server/src/sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { listTools } from '../mcp/McpActions';
+import { listTools } from '../../packages/mcp-server/src/mcp/McpActions';
 import type { McpSettings } from '../mcp/settings';
 import { _resetApprovedMutationScopes, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { CapabilityContext } from './Capability';

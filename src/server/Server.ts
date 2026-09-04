@@ -1,3 +1,4 @@
+import { getBackendServerDelegate } from './backendDelegate';
 import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
@@ -43,9 +44,9 @@ export const Server = new (class _ implements vscode.Disposable {
 
 	private async handleConfigChange(): Promise<void> {
 		const config = getServerConfig();
-		if (config.enabled && !this.isRunning) {
+		if (config.enabled && !this.getStatus()) {
 			await this.start(true);
-		} else if (!config.enabled && this.isRunning && !readMcpSettings().enable) {
+		} else if (!config.enabled && this.getStatus() && !readMcpSettings().enable) {
 			// Only stop when MCP no longer needs the server either.
 			await this.stop();
 		}
@@ -68,6 +69,14 @@ export const Server = new (class _ implements vscode.Disposable {
 	 * every driver was disabled mid-bind; false for an explicit user StartServer.
 	 */
 	async start(auto = false): Promise<boolean> {
+		const backend = getBackendServerDelegate();
+		if (backend) {
+			const started = await backend.start();
+			if (started && auto && !this.shouldStayRunning()) await backend.stop();
+			const running = backend.getStatus();
+			this.statusEmitter.fire(running);
+			return running;
+		}
 		if (this.isRunning) {
 			log.warn('Server.start: already running');
 			return true;
@@ -136,6 +145,12 @@ export const Server = new (class _ implements vscode.Disposable {
 	}
 
 	async stop(): Promise<void> {
+		const backend = getBackendServerDelegate();
+		if (backend) {
+			await backend.stop();
+			this.statusEmitter.fire(backend.getStatus());
+			return;
+		}
 		log.trace('Server.stop: stopping');
 
 		if (!this.server || !this.isRunning) {
@@ -155,7 +170,7 @@ export const Server = new (class _ implements vscode.Disposable {
 	}
 
 	getStatus(): boolean {
-		return this.isRunning;
+		return getBackendServerDelegate()?.getStatus() ?? this.isRunning;
 	}
 
 	private handleRequest(req: IncomingMessage, res: ServerResponse): void {

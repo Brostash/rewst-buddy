@@ -33,6 +33,8 @@ jobs:
               run: npm run type-check
             - name: Build (production bundle)
               run: npm run package
+            - name: Standalone MCP tests and package
+              run: npm run test:mcp
             # vscode-test runs a headless VS Code; Linux needs a virtual display.
             - name: Unit tests
               run: xvfb-run -a npm run test:unit

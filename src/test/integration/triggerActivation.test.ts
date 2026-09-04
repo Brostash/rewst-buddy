@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { Session } from '@sessions';
+import { Session } from '../../../packages/mcp-server/src/sessions';
 import { clearCachedSession, getTestOrgId, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import {
 	_resetMcpMutationApproverForTesting,

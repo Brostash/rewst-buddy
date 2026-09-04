@@ -9,7 +9,7 @@ import {
 	UpdateTemplateMutation,
 	CreateTemplateMinimalMutation,
 	UserFragment,
-} from '@sessions';
+} from '../../../packages/mcp-server/src/sessions';
 import { Org } from '@models';
 
 /**

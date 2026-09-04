@@ -1,5 +1,5 @@
 import type { Capability, CapabilityContext } from '@capabilities';
-import type { Session } from '@sessions';
+import type { Session } from '../../../packages/mcp-server/src/sessions';
 
 export interface RawGraphqlCall {
 	query: string;

@@ -1,30 +1,14 @@
+import { installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { LinkManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
-import {
-	_resetJinjaFilterCacheForTesting,
-	_resetJinjaFilterFetcherForTesting,
-	_setJinjaFilterFetcherForTesting,
-	parseJinjaFilters,
-	primeFilters,
-} from '../capabilities/jinjaDocsCapabilities';
+import { editorDataClient } from '../backend/editorDataClient';
 import { JinjaFilterProvider } from './JinjaFilterProvider';
 
 const { suite, test, setup, teardown } = Mocha;
-
-const DEFAULT_ENGINE_BASE = 'https://engine.rewst.io';
-
-const SAMPLE_PAYLOAD = [
-	{ label: { label: 'abs' }, insertText: 'abs', documentation: { value: 'Absolute value.' } },
-	{
-		label: { label: 'center', detail: '(width=80)' },
-		insertText: 'center',
-		documentation: { value: 'Centers the value.' },
-	},
-];
 
 function makeDoc(uri: vscode.Uri, text: string): vscode.TextDocument {
 	return {
@@ -43,15 +27,17 @@ function makeTemplateLink(uri: vscode.Uri, orgId: string, orgName: string) {
 	};
 }
 
-async function primeAndWait(): Promise<void> {
-	_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
-	primeFilters(DEFAULT_ENGINE_BASE);
+async function primeAndWait(provider: JinjaFilterProvider, uri: vscode.Uri): Promise<void> {
+	const line = '{{ name | }}';
+	const doc = makeDoc(uri, line);
+	provider.provideCompletionItems(doc, new vscode.Position(0, line.indexOf('|') + 1), {} as any, {} as any);
 	await new Promise(resolve => setTimeout(resolve, 0));
 }
 
 suite('Unit: JinjaFilterProvider', () => {
 	const uri = vscode.Uri.file('/test/linked.txt');
 	const provider = new JinjaFilterProvider();
+	const originalGetJinjaFilters = editorDataClient.getJinjaFilters;
 	const dummyToken = {} as vscode.CancellationToken;
 	const dummyContext = { triggerKind: vscode.CompletionTriggerKind.Invoke } as vscode.CompletionContext;
 
@@ -59,15 +45,16 @@ suite('Unit: JinjaFilterProvider', () => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		LinkManager._resetForTesting();
-		_resetJinjaFilterCacheForTesting();
-		_resetJinjaFilterFetcherForTesting();
+		(editorDataClient.getJinjaFilters as any) = async () => [
+			{ name: 'abs', documentation: 'Absolute value.' },
+			{ name: 'center', signature: '(width=80)', documentation: 'Centers the value.' },
+		];
 	});
 
 	teardown(() => {
 		SessionManager._resetForTesting();
 		LinkManager._resetForTesting();
-		_resetJinjaFilterCacheForTesting();
-		_resetJinjaFilterFetcherForTesting();
+		editorDataClient.getJinjaFilters = originalGetJinjaFilters;
 	});
 
 	suite('provideHover()', () => {
@@ -90,9 +77,9 @@ suite('Unit: JinjaFilterProvider', () => {
 		test('warm cache, cursor on filter name → hover with docs', async () => {
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-			SessionManager._setSessionsForTesting([session]);
+			installMockSessions([session]);
 			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name));
-			await primeAndWait();
+			await primeAndWait(provider, uri);
 
 			const line = '{{ name | center }}';
 			const doc = makeDoc(uri, line);
@@ -106,9 +93,8 @@ suite('Unit: JinjaFilterProvider', () => {
 		test('cold cache → undefined, primes in background', async () => {
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-			SessionManager._setSessionsForTesting([session]);
+			installMockSessions([session]);
 			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name));
-			_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
 
 			const line = '{{ name | center }}';
 			const doc = makeDoc(uri, line);
@@ -124,7 +110,7 @@ suite('Unit: JinjaFilterProvider', () => {
 		test('linked but no session for the org → undefined, no throw', () => {
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name));
-			SessionManager._setSessionsForTesting([]);
+			installMockSessions([]);
 
 			const line = '{{ name | center }}';
 			const doc = makeDoc(uri, line);
@@ -163,9 +149,9 @@ suite('Unit: JinjaFilterProvider', () => {
 		test('not after a pipe → undefined', async () => {
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-			SessionManager._setSessionsForTesting([session]);
+			installMockSessions([session]);
 			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name));
-			await primeAndWait();
+			await primeAndWait(provider, uri);
 
 			const line = '{{ name | center }}';
 			const doc = makeDoc(uri, line);
@@ -176,9 +162,9 @@ suite('Unit: JinjaFilterProvider', () => {
 		test('warm cache, right after pipe → full filter list as items', async () => {
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-			SessionManager._setSessionsForTesting([session]);
+			installMockSessions([session]);
 			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name));
-			await primeAndWait();
+			await primeAndWait(provider, uri);
 
 			const line = '{{ name | }}';
 			const doc = makeDoc(uri, line);
@@ -201,7 +187,7 @@ suite('Unit: JinjaFilterProvider', () => {
 		test('linked but no session for the org → undefined, no throw', async () => {
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
 			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name));
-			SessionManager._setSessionsForTesting([]);
+			installMockSessions([]);
 
 			const line = '{{ name | }}';
 			const doc = makeDoc(uri, line);

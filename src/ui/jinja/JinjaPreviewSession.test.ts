@@ -13,6 +13,7 @@ import { LinkManager, type TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { getLastContext, saveLastContext } from '../../models/JinjaPreviewContextStore';
 import { Fixtures, initTestEnvironment, stub } from '@test';
+import { editorDataClient } from '../../backend/editorDataClient';
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as Mocha from 'mocha';
@@ -27,6 +28,12 @@ const { suite, test, setup, teardown, suiteSetup, suiteTeardown } = Mocha;
 
 suite('Unit: JinjaPreviewSession', () => {
 	let tmpDir: string;
+	let renderSession: any;
+	let previewSession: any;
+	const originalRenderJinja = editorDataClient.renderJinja;
+	const originalListPreviewWorkflows = editorDataClient.listPreviewWorkflows;
+	const originalListPreviewExecutions = editorDataClient.listPreviewExecutions;
+	const originalGetPreviewContext = editorDataClient.getPreviewContext;
 
 	suiteSetup(() => {
 		JinjaRenderedContentProvider.init();
@@ -46,6 +53,52 @@ suite('Unit: JinjaPreviewSession', () => {
 		LinkManager._resetForTesting();
 		JinjaPreviewSession._resetForTesting();
 		JinjaRenderedContentProvider._resetForTesting();
+		renderSession = undefined;
+		previewSession = undefined;
+		(editorDataClient.renderJinja as any) = async (input: any) => {
+			if (!renderSession) throw new Error('test client has no render session');
+			const result = await renderSession.rawGraphql('RewstBuddyRenderJinja', {
+				orgId: input.orgId,
+				template: input.template,
+				vars: input.vars,
+			});
+			const errors = (result as any)?.errors;
+			if (Array.isArray(errors) && errors.length > 0) {
+				throw new Error(String(errors[0]?.message ?? errors[0]));
+			}
+			const payload = (result as any)?.data?.renderJinja ?? {};
+			return payload.error
+				? { ok: false, jinjaError: String(payload.error) }
+				: { ok: true, value: payload.result, hasControlCharacter: false };
+		};
+		(editorDataClient.listPreviewWorkflows as any) = async (input: any) => {
+			if (!previewSession) throw new Error('test client has no preview session');
+			const result = await previewSession.rawGraphql('RewstBuddyPreviewWorkflows', {
+				orgId: input.orgId,
+				limit: 500,
+				offset: 0,
+			});
+			return (result as any)?.data?.workflows ?? [];
+		};
+		(editorDataClient.listPreviewExecutions as any) = async (input: any) => {
+			if (!previewSession) throw new Error('test client has no preview session');
+			const read = async (where: Record<string, unknown>) => {
+				const result = await previewSession.rawGraphql('RewstBuddyExecutions', {
+					where,
+					order: [['createdAt', 'desc']],
+					limit: 20,
+				});
+				return (result as any)?.data?.workflowExecutions ?? [];
+			};
+			const scoped = await read({ workflowId: input.workflowId, orgId: input.orgId });
+			return scoped.length > 0 ? scoped : read({ workflowId: input.workflowId });
+		};
+		(editorDataClient.getPreviewContext as any) = async (input: any) => {
+			if (!previewSession) throw new Error('test client has no preview session');
+			const result = await previewSession.rawGraphql('RewstBuddyExecutionContexts', { id: input.executionId });
+			const snapshots = (result as any)?.data?.workflowExecutionContexts ?? [];
+			return Object.assign({}, ...(Array.isArray(snapshots) ? snapshots : [snapshots]));
+		};
 	});
 
 	teardown(() => {
@@ -53,6 +106,12 @@ suite('Unit: JinjaPreviewSession', () => {
 		LinkManager._resetForTesting();
 		JinjaPreviewSession._resetForTesting();
 		JinjaRenderedContentProvider._resetForTesting();
+		editorDataClient.renderJinja = originalRenderJinja;
+		editorDataClient.listPreviewWorkflows = originalListPreviewWorkflows;
+		editorDataClient.listPreviewExecutions = originalListPreviewExecutions;
+		editorDataClient.getPreviewContext = originalGetPreviewContext;
+		renderSession = undefined;
+		previewSession = undefined;
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 	});
 
@@ -202,10 +261,16 @@ suite('Unit: JinjaPreviewSession', () => {
 
 	suite('render (via _renderForTesting)', () => {
 		function fakeRenderSession(orgId: string, onQuery: (query: string, vars?: Record<string, unknown>) => unknown) {
-			return {
+			const session = {
 				rawGraphql: async (query: string, vars?: Record<string, unknown>) => onQuery(query, vars),
-				profile: { org: { id: orgId, name: 'Org' }, allManagedOrgs: [{ id: orgId, name: 'Org' }] },
+				profile: {
+					org: { id: orgId, name: 'Org' },
+					allManagedOrgs: [{ id: orgId, name: 'Org' }],
+					user: { id: `user-${orgId}` },
+				},
 			} as any;
+			renderSession = session;
+			return session;
 		}
 
 		test('merges overrides over the base context, override wins on a shared key', async () => {
@@ -312,8 +377,13 @@ suite('Unit: JinjaPreviewSession', () => {
 					}
 					return { data: {} };
 				},
-				profile: { org: { id: org.id, name: org.name }, allManagedOrgs: [{ id: org.id, name: org.name }] },
+				profile: {
+					org: { id: org.id, name: org.name },
+					allManagedOrgs: [{ id: org.id, name: org.name }],
+					user: { id: 'user-jinja-error' },
+				},
 			} as any;
+			renderSession = fakeSession;
 			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
 
 			try {
@@ -345,8 +415,13 @@ suite('Unit: JinjaPreviewSession', () => {
 					}
 					return { data: {} };
 				},
-				profile: { org: { id: org.id, name: org.name }, allManagedOrgs: [{ id: org.id, name: org.name }] },
+				profile: {
+					org: { id: org.id, name: org.name },
+					allManagedOrgs: [{ id: org.id, name: org.name }],
+					user: { id: 'user-jinja-throw' },
+				},
 			} as any;
+			renderSession = fakeSession;
 			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
 
 			try {
@@ -436,6 +511,7 @@ suite('Unit: JinjaPreviewSession', () => {
 					user: { id: 'user-1' },
 				},
 			} as any;
+			previewSession = fakeSession;
 			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
 			const restoreActiveSessions = stub(SessionManager, 'getActiveSessions', (() => [fakeSession]) as any);
 
@@ -514,8 +590,15 @@ suite('Unit: JinjaPreviewSession', () => {
 						user: { id: `user-${orgId}` },
 					},
 				}) as any;
-			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async (orgId: string) =>
-				fakeSessionFor(orgId)) as any);
+			const restoreGetSession = stub(
+				SessionManager,
+				'getSessionForOrg',
+				(async (orgId: string) => (
+					(renderSession = fakeSessionFor(orgId)),
+					(previewSession = renderSession),
+					renderSession
+				)) as any,
+			);
 			const restoreActiveSessions = stub(SessionManager, 'getActiveSessions', (() => [
 				fakeSessionFor(templateOrg.id),
 			]) as any);
@@ -624,8 +707,15 @@ suite('Unit: JinjaPreviewSession', () => {
 						user: { id: `user-${orgId}` },
 					},
 				}) as any;
-			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async (orgId: string) =>
-				fakeSessionFor(orgId)) as any);
+			const restoreGetSession = stub(
+				SessionManager,
+				'getSessionForOrg',
+				(async (orgId: string) => (
+					(renderSession = fakeSessionFor(orgId)),
+					(previewSession = renderSession),
+					renderSession
+				)) as any,
+			);
 
 			try {
 				await JinjaPreviewSession.createOrShow(uri, extContext);

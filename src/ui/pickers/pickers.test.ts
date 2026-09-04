@@ -1,3 +1,5 @@
+import { installMockProfiles } from '@test';
+import { installMockSessions } from '@test';
 import { SessionManager, type SessionProfile } from '@sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
@@ -66,7 +68,7 @@ suite('Unit: interactive pickers', () => {
 
 		test('returns the only active session without interrupting the user with a picker', async () => {
 			const { session } = createMockSession();
-			SessionManager._setSessionsForTesting([session]);
+			installMockSessions([session]);
 			let quickPickCalls = 0;
 			restores.push(
 				stub(vscode.window, 'showQuickPick', (async () => {
@@ -86,7 +88,7 @@ suite('Unit: interactive pickers', () => {
 			const second = createMockSession({
 				profile: { label: 'Same label', org: { id: 'org-b', name: 'B' } },
 			}).session;
-			SessionManager._setSessionsForTesting([first, second]);
+			installMockSessions([first, second]);
 			restores.push(
 				stub(vscode.window, 'showQuickPick', (async (
 					items: readonly { label: string; description: string; session: unknown }[],
@@ -110,7 +112,7 @@ suite('Unit: interactive pickers', () => {
 		test('returns undefined when a multi-session picker is cancelled', async () => {
 			const first = createMockSession({ profile: { org: { id: 'org-a', name: 'A' } } }).session;
 			const second = createMockSession({ profile: { org: { id: 'org-b', name: 'B' } } }).session;
-			SessionManager._setSessionsForTesting([first, second]);
+			installMockSessions([first, second]);
 			restores.push(
 				stub(
 					vscode.window,
@@ -131,7 +133,7 @@ suite('Unit: interactive pickers', () => {
 
 		test('returns one known-only profile without opening a picker', async () => {
 			const known = profile({ label: 'Inactive profile' });
-			SessionManager._setKnownProfilesForTesting([known]);
+			installMockProfiles([known]);
 			let quickPickCalls = 0;
 			restores.push(
 				stub(vscode.window, 'showQuickPick', (async () => {
@@ -153,8 +155,8 @@ suite('Unit: interactive pickers', () => {
 				org: { id: 'org-b', name: 'B' },
 				user: { ...active.profile.user, id: 'inactive-user' },
 			});
-			SessionManager._setSessionsForTesting([active]);
-			SessionManager._setKnownProfilesForTesting([active.profile, inactive]);
+			installMockSessions([active]);
+			installMockProfiles([active.profile, inactive]);
 			restores.push(
 				stub(vscode.window, 'showQuickPick', (async (
 					items: readonly { description: string; profile: SessionProfile }[],
@@ -171,7 +173,7 @@ suite('Unit: interactive pickers', () => {
 		});
 
 		test('returns undefined when profile removal selection is cancelled', async () => {
-			SessionManager._setKnownProfilesForTesting([profile({ label: 'A' }), profile({ label: 'B' })]);
+			installMockProfiles([profile({ label: 'A' }), profile({ label: 'B' })]);
 			restores.push(
 				stub(
 					vscode.window,

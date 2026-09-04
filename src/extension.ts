@@ -1,5 +1,9 @@
+import { hasRequestingEditor, requestAttachedEditor } from '../packages/mcp-server/src/editorBridge';
+import { applyTemplateChanged } from './backend/editorEvents';
+import { requestEditorMutationApproval, requestEditorWorkingScopeApproval } from './backend/editorHost';
+import { initializeBackend, registerEditorCapabilities, subscribe as subscribeBackend } from './backend/operations';
 import { CommandInitiater } from '@commands';
-import { setMcpMutationApprover, setWorkingScopeApprover, workingScopeApprovalText } from '@capabilities';
+import { setMcpMutationApprover, setWorkingScopeApprover } from '@capabilities';
 import { extPrefix, context as globalVSContext } from '@global';
 import { McpDefinitionProvider, McpServerController } from '@mcp';
 import {
@@ -42,27 +46,31 @@ import vscode from 'vscode';
 export async function activate(context: vscode.ExtensionContext) {
 	globalVSContext.init(context);
 	log.init();
+	// Extension-host unit tests use a separate runtime and never probe the user's server.
+	context.subscriptions.push(initializeBackend({ shared: context.extensionMode !== vscode.ExtensionMode.Test }));
+	context.subscriptions.push(
+		subscribeBackend(event => {
+			const value = event as {
+				type?: string;
+				template?: { id: string; name: string; updatedAt?: string | null };
+			};
+			if (value.type === 'templateChanged' && value.template) {
+				applyTemplateChanged(value.template);
+			}
+		}),
+	);
 
 	log.info(`Starting activation of extension ${extPrefix}`);
-	setMcpMutationApprover(async (scope, operation, origin) => {
-		const requester = origin === 'chat' ? 'Cage-Free Rewsty' : 'An external MCP client';
-		const choice = await vscode.window.showWarningMessage(
-			`${requester} wants to run a mutation against ${scope.scopeName} (${scope.scopeId}) in org ${scope.orgName} (${scope.orgId}).`,
-			{ modal: true, detail: operation },
-			'Approve',
-		);
-		return choice === 'Approve';
-	});
-
-	setWorkingScopeApprover(async (request, origin) => {
-		const approvalText = workingScopeApprovalText(request, origin);
-		const choice = await vscode.window.showWarningMessage(
-			approvalText.message,
-			{ modal: true, detail: approvalText.detail },
-			'Approve',
-		);
-		return choice === 'Approve';
-	});
+	setMcpMutationApprover(async (scope, operation, origin) =>
+		hasRequestingEditor()
+			? (await requestAttachedEditor('approval.mutation', { scope, operation, origin })) === true
+			: requestEditorMutationApproval(scope, operation, origin),
+	);
+	setWorkingScopeApprover(async (request, origin) =>
+		hasRequestingEditor()
+			? (await requestAttachedEditor('approval.scope', { request, origin })) === true
+			: requestEditorWorkingScopeApproval(request, origin),
+	);
 
 	// Register TreeDataProvider (self-registers for session change events)
 	const sessionTreeProvider = new SessionTreeDataProvider();
@@ -147,7 +155,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	// remote baseline. Registration/disposal is required; visible gutter
 	// decorations from a non-primary SourceControl are not guaranteed by VS Code.
 	context.subscriptions.push(RewstQuickDiffProvider.init());
-	context.subscriptions.push(WorkingScopeManager);
+	context.subscriptions.push(WorkingScopeManager.init());
+	void registerEditorCapabilities()
+		.then(disposable => context.subscriptions.push(disposable))
+		.catch(error => log.error('Failed to register editor MCP tools', error));
 	context.subscriptions.push(new StatusBar());
 	context.subscriptions.push(new WorkingScopeStatusBar());
 	context.subscriptions.push(new ContextUsageStatusBar());

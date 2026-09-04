@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager } from '@sessions';
@@ -67,7 +68,7 @@ suite('Unit: ResumeRewstAiConversation', () => {
 				},
 			},
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		let offered: readonly ConversationPickItem[] = [];
 		stub(vscode.window, 'showQuickPick', (async (items: readonly ConversationPickItem[]) => {
@@ -108,7 +109,7 @@ suite('Unit: ResumeRewstAiConversation', () => {
 		wrapper.when('getConversations', {
 			data: { conversations: [storedConversation('conv-1', 'Copy status sync', 'how do I sync?')] },
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		stub(vscode.window, 'showQuickPick', (async () => undefined) as unknown as typeof vscode.window.showQuickPick);
 		const shown: vscode.TextDocument[] = [];
@@ -127,7 +128,7 @@ suite('Unit: ResumeRewstAiConversation', () => {
 		const org = Fixtures.orgModel({ id: 'org-ai', name: 'AI Org' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getConversations', { data: { conversations: [] } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		let picked = false;
 		stub(vscode.window, 'showQuickPick', (async () => {
@@ -148,7 +149,7 @@ suite('Unit: ResumeRewstAiConversation', () => {
 			data: { conversations: [storedConversation('conv-gone', 'Deleted one', 'hello?')] },
 		});
 		wrapper.when('getConversation', { data: { conversation: null } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		stub(
 			vscode.window,
