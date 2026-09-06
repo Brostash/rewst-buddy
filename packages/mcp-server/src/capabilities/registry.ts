@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import type { Capability } from './Capability';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { WORKFLOW_CHAT_CAPABILITIES, graphqlSchemaCapability } from './chatToolCapabilities';
@@ -108,6 +109,16 @@ export function isHostCapability(capability: Capability): boolean {
 	return HOST_CAPABILITIES.has(capability);
 }
 
+const catalogEvents = new EventEmitter();
+catalogEvents.setMaxListeners(0);
+/** Observe additions and removals of editor-provided tools. */
+export function onCapabilityCatalogChanged(listener: () => void): () => void {
+	catalogEvents.on('change', listener);
+	return () => {
+		catalogEvents.off('change', listener);
+	};
+}
+
 /** Optional editor surface supplied by an embedding host; absent in the CLI. */
 export function registerHostCapabilities(capabilities: readonly Capability[]): () => void {
 	const names = new Set<string>();
@@ -121,12 +132,16 @@ export function registerHostCapabilities(capabilities: readonly Capability[]): (
 		CAPABILITY_REGISTRY.push(capability);
 		HOST_CAPABILITIES.add(capability);
 	}
+	if (capabilities.length) catalogEvents.emit('change');
 	return () => {
+		let changed = false;
 		for (const capability of capabilities) {
 			if (BY_NAME.get(capability.spec.name) !== capability) continue;
+			changed = true;
 			BY_NAME.delete(capability.spec.name);
 			const index = CAPABILITY_REGISTRY.indexOf(capability);
 			if (index >= 0) CAPABILITY_REGISTRY.splice(index, 1);
 		}
+		if (changed) catalogEvents.emit('change');
 	};
 }

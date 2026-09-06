@@ -167,7 +167,9 @@ export function createSharedEditorServer(): Server {
 			})
 			.catch(() => undefined);
 	});
+	const onclose = server.onclose;
 	server.onclose = () => {
+		onclose?.();
 		sessions.dispose();
 		scope.dispose();
 		connections.delete(server);

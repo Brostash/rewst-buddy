@@ -1,8 +1,11 @@
+import { PassThrough } from 'node:stream';
+import { runStdioProxy } from '../src/stdioProxy';
+import { registerHostCapabilities } from '../src/capabilities/registry';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer, request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { z } from 'zod';
@@ -213,4 +216,52 @@ describe('shared HTTP hub', () => {
 			await server.close().catch(() => undefined);
 		}
 	});
+});
+
+it('forwards tool catalog changes through the HTTP-to-stdio proxy', async () => {
+	const dir = await mkdtemp(join(tmpdir(), 'rewst-buddy-proxy-'));
+	cleanups.push(() => rm(dir, { recursive: true, force: true }));
+	const port = await freePort();
+	const hub = await startSharedHttpServer({ port, discoveryDir: dir, createEditorServer: createMcpServer });
+	cleanups.push(() => hub.close());
+	const stdin = new PassThrough();
+	const stdout = new PassThrough();
+	let output = '';
+	stdout.on('data', chunk => {
+		output += chunk.toString();
+	});
+	const running = runStdioProxy({ port, publicToken: hub.descriptor.publicToken, stdin, stdout });
+	cleanups.push(async () => {
+		stdin.end();
+		await running;
+	});
+	const send = (message: object) => stdin.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\n');
+	send({
+		id: 1,
+		method: 'initialize',
+		params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+	});
+	await vi.waitFor(() => expect(output).toContain('"id":1'));
+	expect(JSON.parse(output.trim()).result.capabilities.tools.listChanged).toBe(true);
+	send({ method: 'notifications/initialized' });
+	send({ id: 2, method: 'tools/list' });
+	await vi.waitFor(() => expect(output).toContain('"id":2'));
+	output = '';
+	const unregister = registerHostCapabilities([
+		{
+			spec: { name: 'buddy_proxy_dynamic', description: 'proxy test', inputSchema: { type: 'object' } },
+			access: 'read',
+			async run() {
+				return 'ok';
+			},
+		},
+	]);
+	try {
+		await vi.waitFor(() => expect(output).toContain('notifications/tools/list_changed'));
+		output = '';
+		unregister();
+		await vi.waitFor(() => expect(output).toContain('notifications/tools/list_changed'));
+	} finally {
+		unregister();
+	}
 });

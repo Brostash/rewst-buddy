@@ -1,3 +1,4 @@
+import { McpDefinitionProvider } from '../mcp/McpDefinitionProvider';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { discoverSharedServer, type SharedServerDescriptor } from '../../packages/mcp-server/src/sharedDiscovery';
@@ -316,7 +317,7 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 	if (options.shared === false) return initializeEmbeddedBackend();
 	const previousShutdown = pendingShutdown;
 	const config = getServerConfig();
-	const port = options.port ?? config.port;
+	const currentPort = () => options.port ?? getServerConfig().port;
 	let disposed = false;
 	let local: vscode.Disposable | undefined;
 	let hub: Awaited<ReturnType<typeof startSharedHttpServer>> | undefined;
@@ -331,7 +332,7 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 	void runtimeReady.catch(() => undefined);
 	const bind = async () => {
 		hub = await startSharedHttpServer({
-			port,
+			port: currentPort(),
 			discoveryDir: options.discoveryDir,
 			publicToken: getMcpToken(),
 			publicEnabled: () => readMcpSettings().enable,
@@ -377,6 +378,7 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 		closed = false;
 		generation++;
 		setSharedConnection({ descriptor, owned: false });
+		McpDefinitionProvider.refresh();
 		log.info(`Using existing Rewst Buddy server on port ${descriptor.port}`);
 		return next.client;
 	};
@@ -390,6 +392,7 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 		// replacement was queued. Install it again after shutdown finishes.
 		restoreConnection();
 		if (!isLoopbackHost(config.host)) throw new Error('Rewst Buddy shared servers must use a loopback address.');
+		const port = currentPort();
 		const existing = await discoverSharedServer(port, options.discoveryDir);
 		if (disposed) throw new Error('Backend disposed');
 		if (existing) return attach(existing);

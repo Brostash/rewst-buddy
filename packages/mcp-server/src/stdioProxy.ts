@@ -8,6 +8,7 @@ import {
 	ListResourcesRequestSchema,
 	ListToolsRequestSchema,
 	ReadResourceRequestSchema,
+	ToolListChangedNotificationSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Readable, Writable } from 'node:stream';
 
@@ -34,8 +35,15 @@ export async function runStdioProxy(options: StdioProxyOptions): Promise<void> {
 	);
 	const proxy = new Server(
 		{ name: 'rewst-buddy-mcp', version: '0.1.0' },
-		{ capabilities: { tools: {}, resources: {}, prompts: {} } },
+		{ capabilities: { tools: { listChanged: true }, resources: {}, prompts: {} } },
 	);
+	let initialized = false;
+	proxy.oninitialized = () => {
+		initialized = true;
+	};
+	client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+		if (initialized) await proxy.sendToolListChanged().catch(() => undefined);
+	});
 	await client.connect(httpTransport);
 
 	proxy.setRequestHandler(ListToolsRequestSchema, (request, extra) =>

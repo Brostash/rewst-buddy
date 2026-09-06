@@ -336,7 +336,11 @@ async function waitForStdioClose(
 				.catch(() => undefined)
 				.finally(done);
 		};
-		server.onclose = done;
+		const onclose = server.onclose;
+		server.onclose = () => {
+			onclose?.();
+			done();
+		};
 		stdin.once('end', closeTransport);
 		process.once('SIGINT', closeTransport);
 		process.once('SIGTERM', closeTransport);

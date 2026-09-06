@@ -1,3 +1,4 @@
+import { getBackendServerDelegate } from '../server/backendDelegate';
 import { beforeEach as vitestBeforeEach, expect, vi } from 'vitest';
 import { setup as beforeEach, suite as describe, test as it } from '../test/tdd';
 import { cachedResources, cachedTools, initializeBackend, invoke } from './operations';
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => {
 	const servers: { close: ReturnType<typeof vi.fn>; notification: ReturnType<typeof vi.fn> }[] = [];
 	const pairs: { clientClosed: number; serverClosed: number }[] = [];
 	const order: string[] = [];
+	const refreshDefinition = vi.fn();
 	const runtime = {
 		start: vi.fn(async () => {
 			order.push('runtime.start');
@@ -45,11 +47,12 @@ const mocks = vi.hoisted(() => {
 		} as SharedDescriptor,
 		handles: [] as { close: ReturnType<typeof vi.fn> }[],
 		listeners: 0,
-		config: { serverEnabled: true, mcpEnabled: true },
+		config: { serverEnabled: true, mcpEnabled: true, port: 27121 },
 	};
 	let sharedConnection: unknown;
 	let connectGate: Promise<void> | undefined;
 	return {
+		refreshDefinition,
 		servers,
 		pairs,
 		clients,
@@ -98,7 +101,7 @@ vi.mock('vscode', () => {
 				get: <T>(key: string, fallback: T): T => {
 					if (section === 'rewst-buddy.server' && key === 'enabled')
 						return mocks.shared.config.serverEnabled as T;
-					if (section === 'rewst-buddy.server' && key === 'port') return 27121 as T;
+					if (section === 'rewst-buddy.server' && key === 'port') return mocks.shared.config.port as T;
 					if (section === 'rewst-buddy.server' && key === 'host') return '127.0.0.1' as T;
 					if (section === 'rewst-buddy.mcp' && key === 'enable') return mocks.shared.config.mcpEnabled as T;
 					return fallback;
@@ -116,6 +119,8 @@ vi.mock('vscode', () => {
 	};
 	return { default: value, ...value };
 });
+
+vi.mock('../mcp/McpDefinitionProvider', () => ({ McpDefinitionProvider: { refresh: mocks.refreshDefinition } }));
 
 vi.mock('@global', () => ({
 	context: {
@@ -254,6 +259,8 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 }));
 
 function resetMocks(): void {
+	mocks.refreshDefinition.mockClear();
+	mocks.shared.config.port = 27121;
 	mocks.runtime.start.mockClear();
 	mocks.runtime.stop.mockClear();
 	mocks.order.length = 0;
@@ -355,6 +362,8 @@ describe('shared backend lifecycle', () => {
 		await new Promise(resolve => setImmediate(resolve));
 		await vi.waitFor(() => expect(mocks.transports).toHaveLength(1));
 
+		expect(mocks.refreshDefinition).toHaveBeenCalledTimes(1);
+		expect(mocks.sharedConnection).toMatchObject({ descriptor: mocks.shared.descriptor, owned: false });
 		expect(mocks.shared.start).not.toHaveBeenCalled();
 		expect(mocks.runtime.start).not.toHaveBeenCalled();
 		expect(mocks.shared.listeners).toBe(0);
@@ -450,5 +459,41 @@ describe('shared backend lifecycle', () => {
 
 		second.dispose();
 		await new Promise(resolve => setImmediate(resolve));
+	});
+});
+
+describe('configured listener port', () => {
+	vitestBeforeEach(resetMocks);
+	it('reads the current port on delayed start and restart', async () => {
+		mocks.shared.config.serverEnabled = false;
+		mocks.shared.config.mcpEnabled = false;
+		const backend = initializeBackend();
+		try {
+			await invoke('tools.list', {});
+			expect(mocks.shared.start).not.toHaveBeenCalled();
+			mocks.shared.config.port = 28121;
+			await getBackendServerDelegate()!.start();
+			expect(mocks.shared.start).toHaveBeenLastCalledWith(expect.objectContaining({ port: 28121 }));
+			await getBackendServerDelegate()!.stop();
+			mocks.shared.config.port = 29121;
+			await getBackendServerDelegate()!.start();
+			expect(mocks.shared.start).toHaveBeenLastCalledWith(expect.objectContaining({ port: 29121 }));
+		} finally {
+			backend.dispose();
+			await new Promise(resolve => setImmediate(resolve));
+		}
+	});
+	it('preserves an explicit port override', async () => {
+		const backend = initializeBackend({ port: 30121 });
+		try {
+			await invoke('tools.list', {});
+			await getBackendServerDelegate()!.stop();
+			mocks.shared.config.port = 29121;
+			await getBackendServerDelegate()!.start();
+			expect(mocks.shared.start).toHaveBeenLastCalledWith(expect.objectContaining({ port: 30121 }));
+		} finally {
+			backend.dispose();
+			await new Promise(resolve => setImmediate(resolve));
+		}
 	});
 });

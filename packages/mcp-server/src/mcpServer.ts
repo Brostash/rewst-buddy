@@ -1,3 +1,4 @@
+import { onCapabilityCatalogChanged } from './capabilities/registry';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
 	CallToolRequestSchema,
@@ -77,9 +78,20 @@ export function createMcpServer(options: McpServerOptions = {}): Server {
 	assertUniqueExtraTools(extraTools);
 	const extraByName = new Map(extraTools.map(tool => [tool.name, tool]));
 	const server = new Server(SERVER_INFO, {
-		capabilities: { tools: {}, resources: {}, prompts: {} },
+		capabilities: { tools: { listChanged: true }, resources: {}, prompts: {} },
 		instructions: buildMcpInstructions(),
 	});
+
+	let unsubscribeCatalog: (() => void) | undefined;
+	server.oninitialized = () => {
+		unsubscribeCatalog?.();
+		unsubscribeCatalog = onCapabilityCatalogChanged(() => {
+			void server.sendToolListChanged().catch(() => undefined);
+		});
+	};
+	server.onclose = () => {
+		unsubscribeCatalog?.();
+	};
 
 	server.setRequestHandler(ListToolsRequestSchema, () => {
 		const settings = readMcpSettings();

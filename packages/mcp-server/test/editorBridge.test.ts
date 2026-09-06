@@ -1,4 +1,6 @@
-import { beforeEach, afterEach, expect, test } from 'vitest';
+import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
+import { createMcpServer } from '../src/mcpServer';
+import { beforeEach, afterEach, expect, test, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { z } from 'zod';
@@ -183,4 +185,59 @@ test('a same-metadata built-in capability is never treated as host-routable', as
 	);
 	expect(routed).toBe(false);
 	expect(result).not.toBe('wrong-window');
+});
+
+test('public clients refresh their catalog when editors attach, replace tools, and disconnect', async () => {
+	const publicServer = createMcpServer();
+	const client = new Client({ name: 'public-test', version: '1' });
+	const changed = vi.fn();
+	client.setNotificationHandler(ToolListChangedNotificationSchema, changed);
+	const [a, b] = InMemoryTransport.createLinkedPair();
+	await publicServer.connect(b);
+	await client.connect(a);
+	closing.push(
+		() => client.close(),
+		() => publicServer.close(),
+	);
+	expect(client.getServerCapabilities()?.tools?.listChanged).toBe(true);
+	const name = 'buddy_test_dynamic_editor';
+	const names = async () => (await client.listTools()).tools.map(tool => tool.name);
+	expect(await names()).not.toContain(name);
+	const first = await editor();
+	const second = await editor();
+	const attach = async (editorClient: Client, include: boolean) => {
+		const result = await editorClient.callTool({
+			name: 'rewst_editor_operation',
+			arguments: {
+				operation: 'editor.attach',
+				input: {
+					capabilities: include
+						? [
+								{
+									spec: { name, description: 'dynamic editor test', inputSchema: { type: 'object' } },
+									access: 'read',
+									requiresOrg: false,
+								},
+							]
+						: [],
+				},
+			},
+		});
+		expect(result.isError).not.toBe(true);
+	};
+	await attach(first, true);
+	await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+	expect(await names()).toContain(name);
+	await attach(second, true);
+	await attach(first, false);
+	expect(await names()).toContain(name);
+	expect(changed).toHaveBeenCalledTimes(1);
+	await attach(second, false);
+	await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(2));
+	expect(await names()).not.toContain(name);
+	await attach(first, true);
+	await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(3));
+	await first.close();
+	await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(4));
+	expect(await names()).not.toContain(name);
 });
