@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
-import { SessionManager } from '@sessions';
+import { SessionManager } from '../../packages/mcp-server/src/sessions';
 import type { CapabilityContext } from './Capability';
 import { executionLogsDeps } from './chatToolCapabilities';
 

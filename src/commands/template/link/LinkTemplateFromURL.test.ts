@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -74,7 +75,7 @@ suite('Unit: LinkTemplateFromURL', () => {
 				body,
 			}),
 		}));
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubURLInput(templateURL);
 
 		await new LinkTemplateFromURL().execute([uri]);

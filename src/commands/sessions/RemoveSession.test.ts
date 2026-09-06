@@ -1,3 +1,5 @@
+import { installMockProfiles } from '@test';
+import { installMockSessions } from '@test';
 import { SessionManager } from '@sessions';
 import { SessionTreeItem } from '@ui';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -58,7 +60,7 @@ suite('Unit: RemoveSession', () => {
 				allManagedOrgs: [{ id: 'org-tree-remove', name: 'Tree Remove' }],
 			},
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		const item = new SessionTreeItem(session.profile, true, vscode.TreeItemCollapsibleState.None);
 		stubConfirm('Remove');
 
@@ -76,7 +78,7 @@ suite('Unit: RemoveSession', () => {
 				allManagedOrgs: [{ id: 'org-remove-fails', name: 'Remove Fails' }],
 			},
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		const item = new SessionTreeItem(session.profile, true, vscode.TreeItemCollapsibleState.None);
 		stubConfirm('Remove');
 		stub(SessionManager, 'removeSession', (async () => {
@@ -101,7 +103,7 @@ suite('Unit: RemoveSession', () => {
 				allManagedOrgs: [{ id: 'org-keep', name: 'Keep' }],
 			},
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		const item = new SessionTreeItem(session.profile, true, vscode.TreeItemCollapsibleState.None);
 		stubConfirm(undefined);
 
@@ -118,7 +120,8 @@ suite('Unit: RemoveSession', () => {
 				allManagedOrgs: [{ id: 'org-palette', name: 'Palette Org' }],
 			},
 		});
-		SessionManager._setKnownProfilesForTesting([session.profile]);
+		installMockSessions([]);
+		installMockProfiles([session.profile]);
 		stubConfirm('Remove');
 
 		await new RemoveSession().execute();
@@ -143,7 +146,8 @@ suite('Unit: RemoveSession', () => {
 				allManagedOrgs: [{ id: 'org-multi-remove', name: 'Remove Me' }],
 			},
 		});
-		SessionManager._setKnownProfilesForTesting([keep.profile, remove.profile]);
+		installMockSessions([]);
+		installMockProfiles([keep.profile, remove.profile]);
 		stubQuickPick('Remove Me');
 		stubConfirm('Remove');
 

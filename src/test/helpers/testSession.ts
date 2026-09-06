@@ -1,4 +1,4 @@
-import { Session, SessionProfile, Sdk } from '@sessions';
+import { Session, SessionProfile, Sdk } from '../../../packages/mcp-server/src/sessions';
 import { context } from '@global';
 
 let cachedSession: Session | undefined;

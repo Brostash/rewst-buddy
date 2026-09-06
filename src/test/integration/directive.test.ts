@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { askRewstAi, Session } from '@sessions';
+import { askRewstAi, Session } from '../../../packages/mcp-server/src/sessions';
 import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import { MAX_CONVERSATION_MESSAGE_CHARS, TOOL_INSTRUCTIONS_BUDGET_CHARS } from '@utils';
 import { buildEngineeringDirective } from '../../ui/chat/model/engineeringDirective';

@@ -1,21 +1,15 @@
 import { LinkManager } from '@models';
 import { SessionManager } from '@sessions';
 import vscode from 'vscode';
-import {
-	engineBaseFromRegion,
-	getCachedFilters,
-	primeFilters,
-	type JinjaFilterDoc,
-} from '../capabilities/jinjaDocsCapabilities';
+import { editorDataClient, type JinjaFilterDoc } from '../backend/editorDataClient';
 import { findJinjaFilterNameAtPosition, findJinjaFilterTriggerAtPosition } from './jinjaPatternUtils';
 
-/** Resolves the engine base for an already-linked document, via its org's active session. Sync — no fetches. */
-function engineBaseForLinkedDocument(uri: vscode.Uri): string | undefined {
+/** Resolves the active session for an already-linked document. Sync — no fetches. */
+function sessionForLinkedDocument(uri: vscode.Uri) {
 	const link = LinkManager.getTemplateLink(uri);
-	const session = SessionManager.getActiveSessions().find(s =>
-		s.profile.allManagedOrgs.some(org => org.id === link.org.id),
+	return SessionManager.getActiveSessions().find(
+		s => s.profile.org.id === link.org.id || s.profile.allManagedOrgs.some(org => org.id === link.org.id),
 	);
-	return session ? engineBaseFromRegion(session.profile.region?.graphqlUrl) : undefined;
 }
 
 function displayName(filter: JinjaFilterDoc): string {
@@ -30,14 +24,20 @@ function toCompletionItem(filter: JinjaFilterDoc): vscode.CompletionItem {
 	return item;
 }
 
+const filterCache = new Map<string, JinjaFilterDoc[]>();
+
 /** Cache-only lookup for a linked document's filter catalog; primes on a miss, never fetches. */
 function resolveCachedFilters(uri: vscode.Uri): JinjaFilterDoc[] | undefined {
-	const base = engineBaseForLinkedDocument(uri);
-	if (!base) return undefined;
+	const session = sessionForLinkedDocument(uri);
+	const sessionId = session?.profile.user.id;
+	if (!session || !sessionId) return undefined;
 
-	const cached = getCachedFilters(base);
+	const cached = filterCache.get(sessionId);
 	if (!cached) {
-		primeFilters(base);
+		void editorDataClient
+			.getJinjaFilters({ sessionId })
+			.then(filters => filterCache.set(sessionId, filters))
+			.catch(() => undefined);
 		return undefined;
 	}
 	return cached;

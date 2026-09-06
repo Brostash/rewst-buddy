@@ -1,0 +1,67 @@
+{
+	"name": "rewst-buddy-mcp",
+	"version": "0.1.0",
+	"description": "Unofficial community MCP server for Rewst",
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"rewst",
+		"automation"
+	],
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"types": "./dist/types/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/types/index.d.ts",
+			"require": "./dist/index.cjs",
+			"default": "./dist/index.cjs"
+		}
+	},
+	"bin": {
+		"rewst-buddy-mcp": "dist/cli.cjs"
+	},
+	"files": [
+		"dist/*.cjs",
+		"dist/types/**",
+		"README.md",
+		"LICENSE"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"publishConfig": {
+		"access": "public",
+		"provenance": true,
+		"registry": "https://registry.npmjs.org/"
+	},
+	"license": "MIT",
+	"scripts": {
+		"build": "node scripts/build.mjs",
+		"test": "node --test test/package.test.mjs",
+		"prepack": "node scripts/build.mjs"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"graphql": "^16.12.0",
+		"graphql-request": "^7.4.0",
+		"graphql-ws": "^6.0.6",
+		"ws": "^8.18.3",
+		"zod": "^4.4.3",
+		"@graphql-typed-document-node/core": "^3.2.0"
+	},
+	"devDependencies": {
+		"@types/node": "^25.0.3",
+		"esbuild": "^0.28.1",
+		"typescript": "^5.9.3",
+		"@types/ws": "^8.18.1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/totallynotjon/rewst-buddy.git",
+		"directory": "packages/mcp-server"
+	},
+	"bugs": {
+		"url": "https://github.com/totallynotjon/rewst-buddy/issues"
+	}
+}

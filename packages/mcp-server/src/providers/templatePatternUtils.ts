@@ -1,0 +1,68 @@
+export const TEMPLATE_PATTERN =
+	/(?<![\w.])template\s*\(\s*(?=(?:"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"|'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'))["']([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})["']\s*\)/g;
+
+export interface TemplateMatch {
+	templateId: string;
+	startChar: number;
+	endChar: number;
+}
+
+export function findTemplateAtPosition(line: string, character: number): TemplateMatch | null {
+	TEMPLATE_PATTERN.lastIndex = 0; // Reset for fresh match
+	let match: RegExpExecArray | null;
+
+	while ((match = TEMPLATE_PATTERN.exec(line)) !== null) {
+		const start = match.index;
+		const end = start + match[0].length;
+
+		if (character >= start && character <= end) {
+			return {
+				templateId: match[1],
+				startChar: start,
+				endChar: end,
+			};
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Find all template UUIDs referenced in a text body.
+ * Handles Jinja variations like {{ template('UUID') }}, {{- template("UUID") -}}, etc.
+ */
+export function findAllTemplateReferences(text: string): string[] {
+	TEMPLATE_PATTERN.lastIndex = 0;
+	const ids = new Set<string>();
+	let match: RegExpExecArray | null;
+	while ((match = TEMPLATE_PATTERN.exec(text)) !== null) {
+		ids.add(match[1]);
+	}
+	return [...ids];
+}
+
+const TEMPLATE_CALL_PREFIX_PATTERN = /(?<![\w.])template\s*\(\s*(["'])/g;
+
+/** True when `character` sits inside an open (unclosed-quote) `template("`/`template('` call. */
+export function isInsideTemplateCallPrefix(line: string, character: number): boolean {
+	TEMPLATE_CALL_PREFIX_PATTERN.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = TEMPLATE_CALL_PREFIX_PATTERN.exec(line)) !== null) {
+		const quote = match[1];
+		const quoteStart = match.index + match[0].length;
+		if (character < quoteStart) continue;
+		let closeIdx = -1;
+		for (let i = quoteStart; i < line.length; i++) {
+			if (line[i] === '\\') {
+				i++;
+				continue;
+			}
+			if (line[i] === quote) {
+				closeIdx = i;
+				break;
+			}
+		}
+		if (closeIdx === -1 || character <= closeIdx) return true;
+	}
+	return false;
+}

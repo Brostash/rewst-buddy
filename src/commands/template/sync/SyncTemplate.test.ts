@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
@@ -55,7 +56,7 @@ suite('Unit: SyncTemplate', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		SyncManager._setConflictDepsForTesting({
 			showDiff: async () => vscode.Uri.file('/test/fake-remote'),

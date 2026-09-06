@@ -1,4 +1,6 @@
-import { _resetMcpMutationApproverForTesting, setMcpMutationApprover, type CapabilityContext } from '@capabilities';
+import type { CapabilityContext } from './EditorCapability';
+import { installMockSessions } from '@test';
+import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '@capabilities';
 import { LinkManager, type SyncDecision, type SyncDecisionContext, type TemplateLink } from '@models';
 import { SessionManager, type FullTemplateFragment, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -549,7 +551,7 @@ suite('Unit: templateSyncCapabilities', () => {
 					orgId: org.id,
 				}),
 			});
-			SessionManager._setSessionsForTesting([freshSession]);
+			installMockSessions([freshSession]);
 
 			const doc = { uri, getText: () => 'local body' } as unknown as vscode.TextDocument;
 			const target: TemplateSyncTarget = {
@@ -595,7 +597,7 @@ suite('Unit: templateSyncCapabilities', () => {
 
 			// No session registered for the org — simulates removal while the
 			// approval prompt was pending.
-			SessionManager._setSessionsForTesting([]);
+			installMockSessions([]);
 
 			const doc = { uri, getText: () => 'local body' } as unknown as vscode.TextDocument;
 			const target: TemplateSyncTarget = {

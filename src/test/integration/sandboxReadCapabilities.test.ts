@@ -1,5 +1,5 @@
 import { getCapability, type Capability, type CapabilityContext } from '@capabilities';
-import type { Session } from '@sessions';
+import type { Session } from '../../../packages/mcp-server/src/sessions';
 import { clearCachedSession, getTestOrgId, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import { randomUUID } from 'crypto';

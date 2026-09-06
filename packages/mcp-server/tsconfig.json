@@ -1,0 +1,15 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "./src",
+		"outDir": "dist",
+		"noEmit": true,
+		"declaration": true,
+		"declarationMap": false,
+		"baseUrl": "./src",
+		"paths": {
+			"@workflow": ["workflow/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts"]
+}

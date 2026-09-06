@@ -1,5 +1,6 @@
 import { log } from '@utils';
 import { Server } from '@server';
+import { getSharedConnection } from '../../backend/sharedConnection';
 import GenericCommand from '../GenericCommand';
 
 export class StopServer extends GenericCommand {
@@ -12,6 +13,10 @@ export class StopServer extends GenericCommand {
 		}
 
 		await Server.stop();
-		log.notifyInfo('Server stopped');
+		log.notifyInfo(
+			getSharedConnection()?.owned === false
+				? 'The shared server is owned by another process. Stop it in that process when you are finished.'
+				: 'Server stopped',
+		);
 	}
 }

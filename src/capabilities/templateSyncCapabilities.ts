@@ -12,7 +12,7 @@ import vscode from 'vscode';
 import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
-import type { Capability, CapabilityContext } from './Capability';
+import type { Capability, CapabilityContext } from './EditorCapability';
 import { readCapability, writeCapability } from './capabilityFactories';
 import { ORG_ID_FIELD, parseCapabilityInput, requiredStringField, toInputSchema } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';

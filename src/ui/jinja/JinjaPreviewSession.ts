@@ -13,9 +13,8 @@ import { LinkManager, WorkingScopeManager, orgForTemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
+import { editorDataClient } from '../../backend/editorDataClient';
 import { getLastContext, saveLastContext } from '../../models/JinjaPreviewContextStore';
-import { evaluateRenderJinja } from '../../workflow/executions';
-import { createGraphqlDeps } from '../chat/tools/graphqlTool';
 import { type JinjaPreviewOrgPickItem, mergeExecutionContext, pickJinjaExecutionContext } from '../JinjaPreviewContext';
 import { JinjaRenderedContentProvider } from './JinjaRenderedContentProvider';
 import {
@@ -49,6 +48,15 @@ interface InternalState extends JinjaPreviewSessionState {
 
 function errMsg(e: unknown): string {
 	return e instanceof Error ? e.message : String(e);
+}
+
+function sessionIdForOrg(orgId: string): string | undefined {
+	const session = SessionManager.getActiveSessions().find(
+		candidate =>
+			candidate.profile.org.id === orgId || candidate.profile.allManagedOrgs.some(org => org.id === orgId),
+	);
+	const id = session?.profile.user.id;
+	return typeof id === 'string' && id.length > 0 ? id : undefined;
 }
 
 async function fileExists(uri: vscode.Uri): Promise<boolean> {
@@ -111,6 +119,7 @@ function buildOrgItems(anchorOrgId: string): JinjaPreviewOrgPickItem[] {
 			detail: scopedOrgIds.has(orgId) ? 'In working scope' : orgId === anchorOrgId ? 'Template org' : undefined,
 			orgId,
 			orgName,
+			sessionId: sessionIdForOrg(orgId) ?? '',
 		}))
 		.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
 }
@@ -167,7 +176,12 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 				);
 			return;
 		}
-		const freshDeps = createGraphqlDeps(freshSession);
+		const freshSessionId = freshSession.profile.user.id;
+		if (!freshSessionId) {
+			if (isLive())
+				JinjaRenderedContentProvider.update(state.renderedUri, formatRenderedError('Session has no user id.'));
+			return;
+		}
 
 		const editor = vscode.window.visibleTextEditors.find(
 			e => e.document.uri.toString() === state.templateUri.toString(),
@@ -179,7 +193,12 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 					(await vscode.workspace.openTextDocument(state.templateUri)).getText());
 
 		try {
-			const outcome = await evaluateRenderJinja(freshDeps, state.orgId, templateText, vars);
+			const outcome = await editorDataClient.renderJinja({
+				sessionId: freshSessionId,
+				orgId: state.orgId,
+				template: templateText,
+				vars,
+			});
 			if (!isLive()) return;
 			if (!outcome.ok) {
 				JinjaRenderedContentProvider.update(
@@ -286,10 +305,9 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 			try {
 				const renderOrgId = remembered.orgId || org.id;
 				const rememberedSession = await SessionManager.getSessionForOrg(renderOrgId);
-				state.mergedVars = await mergeExecutionContext(
-					createGraphqlDeps(rememberedSession),
-					remembered.executionId,
-				);
+				const sessionId = rememberedSession.profile.user.id;
+				if (!sessionId) throw new Error('Session has no user id.');
+				state.mergedVars = await mergeExecutionContext(sessionId, renderOrgId, remembered.executionId);
 				state.orgId = renderOrgId;
 				await this.doRender(state);
 			} catch (e) {
@@ -339,8 +357,7 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 			entry = await pickJinjaExecutionContext({
 				orgItems: buildOrgItems(org.id),
 				initialOrgId: org.id,
-				depsForOrg: async selectedOrgId =>
-					createGraphqlDeps(await SessionManager.getSessionForOrg(selectedOrgId)),
+				sessionIdForOrg,
 			});
 		} catch (e) {
 			log.notifyError('Failed to pick Jinja preview context:', e);
@@ -352,7 +369,9 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 		try {
 			const renderOrgId = entry.orgId || org.id;
 			const contextSession = await SessionManager.getSessionForOrg(renderOrgId);
-			state.mergedVars = await mergeExecutionContext(createGraphqlDeps(contextSession), entry.executionId);
+			const sessionId = contextSession.profile.user.id;
+			if (!sessionId) throw new Error('Session has no user id.');
+			state.mergedVars = await mergeExecutionContext(sessionId, renderOrgId, entry.executionId);
 			state.orgId = renderOrgId;
 			await this.doRender(state);
 		} catch (e) {

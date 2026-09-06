@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { Session } from '@sessions';
+import { Session } from '../../../packages/mcp-server/src/sessions';
 import { hasTestToken, getTestOrgId, getTestSession, getTestSdk, clearCachedSession, initTestEnvironment } from '@test';
 import { randomUUID } from 'crypto';
 

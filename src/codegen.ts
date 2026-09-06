@@ -1,10 +1,10 @@
 import type { CodegenConfig } from '@graphql-codegen/cli';
 
 const config: CodegenConfig = {
-	schema: 'src/sessions/graphql/schema.graphql',
-	documents: ['src/**/*.graphql', '!src/sessions/graphql/schema.graphql'],
+	schema: 'packages/mcp-server/src/sessions/graphql/schema.graphql',
+	documents: ['packages/mcp-server/src/**/*.graphql', '!packages/mcp-server/src/sessions/graphql/schema.graphql'],
 	generates: {
-		'src/sessions/graphql/generated/': {
+		'packages/mcp-server/src/sessions/graphql/generated/': {
 			preset: 'client',
 			presetConfig: {
 				fragmentMasking: false,

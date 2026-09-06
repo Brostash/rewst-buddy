@@ -1,5 +1,4 @@
-import { log } from '@utils';
-import vscode from 'vscode';
+import { getRuntimeHost, log } from '../../packages/mcp-server/src/host';
 
 export interface RegionConfig {
 	name: string;
@@ -23,8 +22,7 @@ export function getSubscriptionsUrl(config: RegionConfig): string {
 }
 
 export function getRegionConfigs(): RegionConfig[] {
-	const config = vscode.workspace.getConfiguration('rewst-buddy');
-	const regions = config.get<RegionConfig[]>('regions', [
+	const regions = getRuntimeHost().getSetting<RegionConfig[]>('regions', [
 		{
 			name: 'North America',
 			cookieName: 'appSession',
@@ -35,7 +33,7 @@ export function getRegionConfigs(): RegionConfig[] {
 
 	if (regions.length === 0)
 		throw log.notifyError(
-			`No regions were found in vscode config. Sessions cannot be created if there are no defined regions`,
+			'No regions were found in runtime host settings. Sessions cannot be created if there are no defined regions',
 		);
 	return regions;
 }

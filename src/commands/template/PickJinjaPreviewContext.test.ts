@@ -17,12 +17,18 @@ import * as path from 'path';
 import vscode from 'vscode';
 import { JinjaPreviewSession } from '../../ui/jinja/JinjaPreviewSession';
 import { JinjaRenderedContentProvider } from '../../ui/jinja/JinjaRenderedContentProvider';
+import { editorDataClient } from '../../backend/editorDataClient';
 import { PickJinjaPreviewContext } from './PickJinjaPreviewContext';
 
 const { suite, test, setup, teardown, suiteSetup, suiteTeardown } = Mocha;
 
 suite('Unit: PickJinjaPreviewContext', () => {
 	let tmpDir: string;
+	let activeSession: any;
+	const originalRenderJinja = editorDataClient.renderJinja;
+	const originalListPreviewWorkflows = editorDataClient.listPreviewWorkflows;
+	const originalListPreviewExecutions = editorDataClient.listPreviewExecutions;
+	const originalGetPreviewContext = editorDataClient.getPreviewContext;
 
 	suiteSetup(() => {
 		JinjaRenderedContentProvider.init();
@@ -42,6 +48,44 @@ suite('Unit: PickJinjaPreviewContext', () => {
 		JinjaRenderedContentProvider._resetForTesting();
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewst-buddy-pickcontext-'));
 		Object.assign(extContext, { globalStorageUri: vscode.Uri.file(tmpDir) });
+		activeSession = undefined;
+		(editorDataClient.renderJinja as any) = async (input: any) => {
+			if (!activeSession) throw new Error('test client has no session');
+			const result = await activeSession.rawGraphql('RewstBuddyRenderJinja', {
+				orgId: input.orgId,
+				template: input.template,
+				vars: input.vars,
+			});
+			const payload = (result as any)?.data?.renderJinja ?? {};
+			if ((result as any)?.errors?.length) throw new Error(String((result as any).errors[0]?.message));
+			return payload.error
+				? { ok: false, jinjaError: String(payload.error) }
+				: { ok: true, value: payload.result, hasControlCharacter: false };
+		};
+		(editorDataClient.listPreviewWorkflows as any) = async (input: any) => {
+			if (!activeSession) throw new Error('test client has no session');
+			const result = await activeSession.rawGraphql('RewstBuddyPreviewWorkflows', {
+				orgId: input.orgId,
+				limit: 500,
+				offset: 0,
+			});
+			return (result as any)?.data?.workflows ?? [];
+		};
+		(editorDataClient.listPreviewExecutions as any) = async (input: any) => {
+			if (!activeSession) throw new Error('test client has no session');
+			const result = await activeSession.rawGraphql('RewstBuddyExecutions', {
+				where: { workflowId: input.workflowId, orgId: input.orgId },
+				order: [['createdAt', 'desc']],
+				limit: 20,
+			});
+			return (result as any)?.data?.workflowExecutions ?? [];
+		};
+		(editorDataClient.getPreviewContext as any) = async (input: any) => {
+			if (!activeSession) throw new Error('test client has no session');
+			const result = await activeSession.rawGraphql('RewstBuddyExecutionContexts', { id: input.executionId });
+			const snapshots = (result as any)?.data?.workflowExecutionContexts ?? [];
+			return Object.assign({}, ...(Array.isArray(snapshots) ? snapshots : [snapshots]));
+		};
 	});
 
 	teardown(() => {
@@ -49,6 +93,11 @@ suite('Unit: PickJinjaPreviewContext', () => {
 		LinkManager._resetForTesting();
 		JinjaPreviewSession._resetForTesting();
 		JinjaRenderedContentProvider._resetForTesting();
+		editorDataClient.renderJinja = originalRenderJinja;
+		editorDataClient.listPreviewWorkflows = originalListPreviewWorkflows;
+		editorDataClient.listPreviewExecutions = originalListPreviewExecutions;
+		editorDataClient.getPreviewContext = originalGetPreviewContext;
+		activeSession = undefined;
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 	});
 
@@ -149,6 +198,7 @@ suite('Unit: PickJinjaPreviewContext', () => {
 				user: { id: 'user-1' },
 			},
 		} as any;
+		activeSession = fakeSession;
 		const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
 		const restoreActiveSessions = stub(SessionManager, 'getActiveSessions', (() => [fakeSession]) as any);
 		const restoreShow = stubShowTextDocument();
@@ -207,6 +257,7 @@ suite('Unit: PickJinjaPreviewContext', () => {
 				user: { id: 'user-2' },
 			},
 		} as any;
+		activeSession = fakeSession;
 		const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
 		const restoreActiveSessions = stub(SessionManager, 'getActiveSessions', (() => [fakeSession]) as any);
 		const restoreShow = stubShowTextDocument();

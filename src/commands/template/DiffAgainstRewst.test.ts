@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
@@ -60,7 +61,7 @@ suite('Unit: DiffAgainstRewst', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		let diffArgs: unknown[] | undefined;
 		const restore = stub(vscode.commands, 'executeCommand', (async (...args: unknown[]) => {
@@ -113,7 +114,7 @@ suite('Unit: DiffAgainstRewst', () => {
 
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { error: Fixtures.networkError('engine unavailable') });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		let notifyCalls = 0;
 		const restoreNotify = stub(log, 'notifyError', ((message: string) => {

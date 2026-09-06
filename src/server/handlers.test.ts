@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -178,7 +179,7 @@ suite('Unit: handleOpenTemplate', () => {
 			organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 		});
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery(remoteTemplate) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const uri = vscode.Uri.file('/ws/existing.j2');
 		const existingTemplateLink: TemplateLink = {
@@ -226,7 +227,7 @@ suite('Unit: handleOpenTemplate', () => {
 			organization: Fixtures.org({ id: 'org-2', name: 'Org Two' }),
 		});
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery(remoteTemplate) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const fixedUri = vscode.Uri.file('/ws/new-template.j2');
 		restores.push(stub(vscode.workspace, 'saveAs', (async () => fixedUri) as typeof vscode.workspace.saveAs));
@@ -252,7 +253,7 @@ suite('Unit: handleOpenTemplate', () => {
 			organization: Fixtures.org({ id: 'org-3', name: 'Org Three' }),
 		});
 		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery(remoteTemplate) });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		restores.push(stub(vscode.workspace, 'saveAs', (async () => undefined) as typeof vscode.workspace.saveAs));
 
@@ -270,7 +271,7 @@ suite('Unit: handleOpenTemplate', () => {
 		const org = Fixtures.orgModel({ id: 'org-4', name: 'Org Four' });
 		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		wrapper.when('getTemplate', { error: Fixtures.networkError('boom') });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const { calls, sendResponse } = createSendResponseSpy();
 		await handleOpenTemplate(request('org-4', 'tpl-4'), fakeRes, sendResponse);

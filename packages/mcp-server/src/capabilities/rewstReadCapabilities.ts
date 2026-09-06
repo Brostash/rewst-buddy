@@ -1,0 +1,749 @@
+import { z } from 'zod';
+import { runReadonlyGraphql } from '../tools/graphqlTool';
+import type { ToolSpec } from '../tools/toolProtocol';
+import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
+import {
+	mapWithConcurrency,
+	optionalClampedInt,
+	optionalStringField,
+	ORG_ID_FIELD,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	requiredStringField,
+	toInputSchema,
+} from './inputHelpers';
+
+/**
+ * Read-only Rewst capabilities exposed over the MCP server. Each operates on the
+ * authenticated, multi-org sessions the extension already holds; the MCP server
+ * runs in the extension host and receives only tool names and arguments, never
+ * credentials.
+ *
+ * Descriptions are deliberately plain and factual: they enter an external
+ * agent's context, so they avoid instruction-shaped or authority-claiming
+ * wording (same discipline as the chat steering prompt).
+ */
+
+// Bounds list responses so a large org cannot flood an agent's context.
+const DEFAULT_WORKFLOW_LIMIT = 100;
+const DEFAULT_REFERENCE_LIMIT = 25;
+const DEFAULT_ORG_VARIABLE_LIMIT = 50;
+const DEFAULT_EXECUTION_LIMIT = 25;
+const DEFAULT_TASK_LIMIT = 100;
+const DEFAULT_PATCH_LIMIT = 25;
+const MAX_WORKFLOW_LIMIT = 500;
+const MAX_REFERENCE_LIMIT = 100;
+const MAX_ORG_VARIABLE_LIMIT = 200;
+const MAX_EXECUTION_LIMIT = 100;
+const MAX_TASK_LIMIT = 500;
+const MAX_PATCH_LIMIT = 100;
+const DEFAULT_RECENT_EDITS_LIMIT = 25;
+const MAX_RECENT_EDITS_LIMIT = 100;
+
+const LOCAL_REFERENCE_MODELS = [
+	'Crate',
+	'CustomDatabase',
+	'Organization',
+	'PackConfig',
+	'Role',
+	'Template',
+	'TemplateExport',
+	'User',
+	'Workflow',
+	'Trigger',
+	'Form',
+	'Site',
+	'Page',
+] as const;
+
+const modelTypeMessage = (received: unknown) =>
+	received === undefined || received === null || received === ''
+		? 'Missing required string argument "modelType".'
+		: `Invalid modelType "${String(received)}". Valid modelType values: ${LOCAL_REFERENCE_MODELS.join(', ')}`;
+
+/** Lists every org reachable through the active sessions; needs no org id. */
+const listOrgsInputSchema = z.object({});
+const listOrgsSpec: ToolSpec = {
+	name: 'buddy_list_orgs',
+	args: '{}',
+	description:
+		'List the Rewst organizations reachable through the configured Rewst sessions, with their ids and names. Call this first to learn which orgId to pass to the other tools.',
+	inputSchema: toInputSchema(listOrgsInputSchema),
+};
+
+const getTemplateInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	templateId: requiredStringField('templateId').describe('Template id to fetch.'),
+});
+const getTemplateSpec: ToolSpec = {
+	name: 'buddy_get_template',
+	args: '{"orgId": string, "templateId": string}',
+	description: 'Get one Rewst template, including its body, by org and template id.',
+	inputSchema: toInputSchema(getTemplateInputSchema),
+};
+
+const listWorkflowsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive name filter.'),
+	limit: optionalClampedInt(MAX_WORKFLOW_LIMIT).describe(
+		`Max workflows to return (default ${DEFAULT_WORKFLOW_LIMIT}).`,
+	),
+});
+const listWorkflowsSpec: ToolSpec = {
+	name: 'buddy_list_workflows',
+	args: '{"orgId": string, "search"?: string, "limit"?: number}',
+	description:
+		'List workflows in one Rewst organization (id, name, description). Optionally filter by a name search and cap the count.',
+	inputSchema: toInputSchema(listWorkflowsInputSchema),
+};
+
+const listOrgVariablesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive name substring filter.'),
+	limit: optionalClampedInt(MAX_ORG_VARIABLE_LIMIT).describe(
+		`Max variables to return (default ${DEFAULT_ORG_VARIABLE_LIMIT}, max ${MAX_ORG_VARIABLE_LIMIT}).`,
+	),
+});
+const listOrgVariablesSpec: ToolSpec = {
+	name: 'buddy_list_org_variables',
+	args: '{"orgId": string, "search"?: string, "limit"?: number}',
+	description:
+		'List configuration variables for one Rewst organization (name, value, category, cascade). Secret-category values are returned masked. Optionally filter by a case-insensitive name substring.',
+	inputSchema: toInputSchema(listOrgVariablesInputSchema),
+};
+
+const findExecutionsByVariableInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('The workflow whose executions to scan.'),
+	name: requiredStringField('name').describe('Case-insensitive substring matched against variable names.'),
+	kind: z
+		.enum(['input', 'output', 'context'])
+		.optional()
+		.catch('input' as 'input' | 'output' | 'context')
+		.describe("Which variable surface to search: input (default), output, or context (the run's CTX)."),
+	// Note: .optional() before .catch() keeps 'kind' out of the JSON Schema
+	// required array while still defaulting to 'input' at runtime via .catch().
+	value: optionalStringField().describe(
+		"Optional case-insensitive substring the matched variable's value must contain.",
+	),
+	limit: optionalClampedInt(MAX_EXECUTION_LIMIT).describe(
+		`Max executions to scan, most-recent first (default ${DEFAULT_EXECUTION_LIMIT}, max ${MAX_EXECUTION_LIMIT}). For kind=context this is also the number of extra context requests issued.`,
+	),
+});
+const findExecutionsByVariableSpec: ToolSpec = {
+	name: 'buddy_find_executions_by_variable',
+	args: '{"orgId": string, "workflowId": string, "name": string, "kind"?: "input"|"output"|"context", "value"?: string, "limit"?: number}',
+	description:
+		"Find executions of ONE Rewst workflow whose input, output, or context variable matches a name (and optionally a value). Scans the most-recently-created executions of the given workflow and filters client-side. kind selects which variable surface to search: input (the values the run was started with), output (the values it produced — absent until a run completes), or context (the run's CTX). name is matched case-insensitively as a substring against variable names; pass value to also require the variable's value to contain that text. Returns one line per matching execution with its id, status, created time, and the matched variable(s). Both orgId and workflowId are required — there is no way to search executions across a whole org by variable, and kind=context issues one extra request per scanned execution.",
+	inputSchema: toInputSchema(findExecutionsByVariableInputSchema),
+};
+
+const listWorkflowTasksInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('Workflow id whose tasks to list.'),
+	limit: optionalClampedInt(MAX_TASK_LIMIT).describe(
+		`Max tasks to return (default ${DEFAULT_TASK_LIMIT}, max ${MAX_TASK_LIMIT}).`,
+	),
+});
+const listWorkflowTasksSpec: ToolSpec = {
+	name: 'buddy_list_workflow_tasks',
+	args: '{"orgId": string, "workflowId": string, "limit"?: number}',
+	description:
+		'List the tasks (steps) in one Rewst workflow (id, name, actionId, mocked marker only when a task is mocked, timeout, description). Task ids are dash-less hex strings.',
+	inputSchema: toInputSchema(listWorkflowTasksInputSchema),
+};
+
+const listWorkflowPatchesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('Workflow id whose patch history to list.'),
+	username: optionalStringField().describe(
+		'Only include patches by a user matching this username (case-insensitive substring).',
+	),
+	limit: optionalClampedInt(MAX_PATCH_LIMIT).describe(
+		`Max patches to return (default ${DEFAULT_PATCH_LIMIT}, max ${MAX_PATCH_LIMIT}).`,
+	),
+});
+const listWorkflowPatchesSpec: ToolSpec = {
+	name: 'buddy_list_workflow_patches',
+	args: '{"orgId": string, "workflowId": string, "username"?: string, "limit"?: number}',
+	description:
+		'List the revision history (patch metadata) for one Rewst workflow, newest first (id, patchType, comment, createdAt, username). Use buddy_get_workflow_patch with a patch id to see the actual change. createdAt is an epoch-millisecond string. username filters to patches by a specific user (case-insensitive substring).',
+	inputSchema: toInputSchema(listWorkflowPatchesInputSchema),
+};
+
+const recentWorkflowEditsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	username: optionalStringField().describe(
+		'Only include workflows whose last editor matches this username (case-insensitive substring).',
+	),
+	limit: optionalClampedInt(MAX_RECENT_EDITS_LIMIT).describe(
+		`Max workflows to return (default ${DEFAULT_RECENT_EDITS_LIMIT}, max ${MAX_RECENT_EDITS_LIMIT}).`,
+	),
+});
+const recentWorkflowEditsSpec: ToolSpec = {
+	name: 'buddy_recent_workflow_edits',
+	args: '{"orgId": string, "username"?: string, "limit"?: number}',
+	description:
+		"List one org's workflows ordered by most recent edit — workflow name, id, when it was last updated, and the user who made the last edit. Use it to see what changed recently or what a specific user touched; drill into one workflow's change history with buddy_list_workflow_patches. username filters by the last editor (case-insensitive substring match).",
+	inputSchema: toInputSchema(recentWorkflowEditsInputSchema),
+};
+
+const getWorkflowPatchInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	patchId: requiredStringField('patchId').describe('Workflow patch id to fetch.'),
+});
+const getWorkflowPatchSpec: ToolSpec = {
+	name: 'buddy_get_workflow_patch',
+	args: '{"orgId": string, "patchId": string}',
+	description:
+		'Get one Rewst workflow patch by id, including `patch` — the actual change as an RFC-6902 JSON Patch array. Pair with buddy_list_workflow_patches to find a patch id.',
+	inputSchema: toInputSchema(getWorkflowPatchInputSchema),
+};
+
+const getWorkflowExecutionStatsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	createdSince: requiredStringField('createdSince')
+		.refine(value => !/^\d+$/.test(value), {
+			error: 'createdSince must be an ISO-8601 date string; epoch milliseconds are not supported.',
+		})
+		.describe('ISO-8601 date string such as 2025-01-01 or 2025-01-01T00:00:00Z.'),
+});
+const getWorkflowExecutionStatsSpec: ToolSpec = {
+	name: 'buddy_get_workflow_execution_stats',
+	args: '{"orgId": string, "createdSince": string}',
+	description:
+		'Get aggregate workflow-execution status counts for one Rewst organization since a date (succeeded, failed, running, pending, paused, delayed, humanSecondsSaved). createdSince must be an ISO-8601 date string (e.g. 2025-01-01 or 2025-01-01T00:00:00Z) — epoch milliseconds are rejected.',
+	inputSchema: toInputSchema(getWorkflowExecutionStatsInputSchema),
+};
+
+const resolveReferenceInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	modelType: z
+		.preprocess(
+			raw => (typeof raw === 'string' ? raw.trim() : raw),
+			z.enum(LOCAL_REFERENCE_MODELS, { error: issue => modelTypeMessage(issue.input) }),
+		)
+		.describe('Which kind of Rewst object to resolve.'),
+	search: optionalStringField().describe('Optional case-insensitive name substring filter.'),
+	limit: optionalClampedInt(MAX_REFERENCE_LIMIT).describe(
+		`Max references to return (default ${DEFAULT_REFERENCE_LIMIT}, max ${MAX_REFERENCE_LIMIT}).`,
+	),
+});
+const resolveReferenceSpec: ToolSpec = {
+	name: 'buddy_resolve_reference',
+	args: '{"orgId": string, "modelType": string, "search"?: string, "limit"?: number}',
+	description:
+		'Resolve Rewst object names to ids for one organization and a model type (Workflow, Template, Trigger, Form, Organization, User, Role, PackConfig, Site, Page, Crate, CustomDatabase, TemplateExport). Optionally filter by a case-insensitive name substring. Returns matching options as name (id). Use this when you have a name and need the id.',
+	inputSchema: toInputSchema(resolveReferenceInputSchema),
+};
+
+const getWorkflowInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('Workflow id to fetch.'),
+});
+const getWorkflowSpec: ToolSpec = {
+	name: 'buddy_get_workflow',
+	args: '{"orgId": string, "workflowId": string}',
+	description: 'Get one Rewst workflow (metadata and triggers) by org and workflow id.',
+	inputSchema: toInputSchema(getWorkflowInputSchema),
+};
+
+const graphqlQueryInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	query: requiredStringField('query').describe('GraphQL query document (no mutations or subscriptions).'),
+	variables: z.record(z.string(), z.unknown()).optional().describe('Optional GraphQL variables.'),
+});
+const graphqlQuerySpec: ToolSpec = {
+	name: 'buddy_graphql_query',
+	args: '{"orgId": string, "query": string, "variables"?: object}',
+	description:
+		"Run a read-only GraphQL query against one Rewst organization with the user's session. Only query operations are allowed; mutations and subscriptions are rejected. Use this for data the dedicated read tools do not cover (executions, integrations, variables, and so on).",
+	inputSchema: toInputSchema(graphqlQueryInputSchema),
+};
+
+// GraphQL for workflow reads: the typed SDK has no workflow operations, so these
+// use the session's rawGraphql against the documented schema fields.
+/** Lists workflows for one org through the working workflows query. */
+const WORKFLOWS_QUERY = `query RewstBuddyMcpWorkflows($orgId: ID!, $limit: Int, $search: WorkflowSearch) {
+  workflows(where: { orgId: $orgId }, search: $search, limit: $limit, order: [["updatedAt", "DESC"]]) {
+    id
+    name
+    description
+    orgId
+    createdAt
+    updatedAt
+  }
+}`;
+
+const ORG_VARIABLES_QUERY = `query RewstBuddyMcpOrgVariables($orgId: ID!, $search: OrgVariableSearchInput, $limit: Int) {
+  orgVariables(where: { orgId: $orgId }, search: $search, maskSecrets: true, limit: $limit, order: [["name", "asc"]]) {
+    name
+    value
+    category
+    cascade
+  }
+}`;
+
+const EXECUTIONS_WITH_IO_QUERY = `query RewstBuddyMcpExecutionsWithIO($orgId: ID!, $workflowId: ID!, $limit: Int) {
+  workflowExecutions(where: { orgId: $orgId, workflowId: $workflowId }, order: [["createdAt", "DESC"]], limit: $limit) {
+    id
+    status
+    createdAt
+    numSuccessfulTasks
+    conductor {
+      input
+      output
+    }
+  }
+}`;
+
+const EXECUTION_CONTEXTS_QUERY = `query RewstBuddyMcpExecutionContexts($workflowExecutionId: ID!) {
+  workflowExecutionContexts(workflowExecutionId: $workflowExecutionId)
+}`;
+
+const WORKFLOW_TASKS_QUERY = `query RewstBuddyMcpWorkflowTasks($workflowId: ID!, $limit: Int) {
+  workflowTasks(where: { workflowId: $workflowId }, limit: $limit, order: [["name", "ASC"]]) {
+    id
+    name
+    actionId
+    workflowId
+    isMocked
+    timeout
+    description
+  }
+}`;
+
+const WORKFLOW_PATCHES_QUERY = `query RewstBuddyMcpWorkflowPatches($workflowId: ID!, $limit: Int) {
+  workflowPatches(where: { workflowId: $workflowId }, orderBy: createdAt_DESC, limit: $limit) {
+    id
+    patchType
+    comment
+    commentDescription
+    workflowId
+    createdAt
+    user { id username }
+  }
+}`;
+
+const WORKFLOW_PATCH_QUERY = `query RewstBuddyMcpWorkflowPatch($id: ID!) {
+  workflowPatch(id: $id) {
+    id
+    patchType
+    patch
+    comment
+    commentDescription
+    workflowId
+    createdAt
+    user { id username }
+  }
+}`;
+
+const RECENT_WORKFLOW_EDITS_QUERY = `query RewstBuddyMcpRecentWorkflowEdits($orgId: ID!, $limit: Int) {
+  workflows(where: { orgId: $orgId }, order: [["updatedAt", "DESC"]], limit: $limit) {
+    id name updatedAt updatedById updatedBy { id username }
+  }
+}`;
+
+const WORKFLOW_EXECUTION_STATS_QUERY = `query RewstBuddyMcpWorkflowExecutionStats($orgId: ID!, $createdSince: String!) {
+  workflowExecutionStats(orgId: $orgId, createdSince: $createdSince) {
+    succeeded
+    failed
+    running
+    pending
+    paused
+    delayed
+    humanSecondsSaved
+  }
+}`;
+
+const WORKFLOW_QUERY = `query RewstBuddyMcpWorkflow($id: ID!) {
+	workflow(where: { id: $id }) {
+		id
+		name
+		description
+		orgId
+		createdAt
+		updatedAt
+		triggers {
+			id
+			name
+		}
+	}
+}`;
+
+const RESOLVE_REFERENCE_QUERY = `query RewstBuddyMcpResolveReference($orgId: ID!, $modelName: LocalReferenceModel!, $search: String, $limit: Int) {
+  localReferenceOptions(modelName: $modelName, orgId: $orgId, search: $search, limit: $limit) {
+    label
+    value
+  }
+}`;
+
+async function runListOrgs(_input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const orgs = new Map<string, string>();
+	for (const session of ctx.sessions) {
+		for (const org of session.profile.allManagedOrgs) {
+			if (org.id) orgs.set(org.id, org.name);
+		}
+	}
+	if (orgs.size === 0) return 'No organizations are available. Sign in through the MCP host session settings first.';
+	const lines = [...orgs.entries()].map(([id, name]) => `${name} (${id})`).sort();
+	return lines.join('\n');
+}
+
+async function runGetTemplate(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, templateId } = parseCapabilityInput(getTemplateInputSchema, input);
+	const template = await ctx.session.getTemplate(templateId);
+	// A session can manage several orgs, so a bare id lookup can cross org
+	// boundaries; enforce the requested orgId against the returned resource.
+	// Fail closed: reject when orgId is absent as well as when it mismatches.
+	const templateOrgId = (template as { orgId?: unknown }).orgId;
+	if (typeof templateOrgId !== 'string' || templateOrgId !== orgId) {
+		throw new Error(`Template ${templateId} is not in org ${orgId}.`);
+	}
+	return JSON.stringify(template, null, 2);
+}
+
+async function runListWorkflows(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, search, limit: rawLimit } = parseCapabilityInput(listWorkflowsInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_WORKFLOW_LIMIT;
+	const variables: Record<string, unknown> = { orgId, limit };
+	if (search) variables.search = { name: { _ilike: `%${search}%` } };
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOWS_QUERY, variables);
+	const workflows = ((data as { workflows?: unknown[] } | undefined)?.workflows ?? []) as {
+		id?: string;
+		name?: string;
+		description?: string;
+	}[];
+	if (workflows.length === 0) return 'No workflows found for this organization.';
+	return workflows
+		.map(
+			workflow =>
+				`${workflow.name ?? '(unnamed)'} (${workflow.id})${workflow.description ? ` — ${workflow.description}` : ''}`,
+		)
+		.join('\n');
+}
+
+async function runListOrgVariables(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, search, limit: rawLimit } = parseCapabilityInput(listOrgVariablesInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_ORG_VARIABLE_LIMIT;
+	const variables: Record<string, unknown> = { orgId, limit };
+	if (search) variables.search = { name: { _ilike: `%${search}%` } };
+	const data = await rawGraphqlOrThrow(ctx.session, ORG_VARIABLES_QUERY, variables);
+	const orgVariables = ((data as { orgVariables?: unknown[] } | undefined)?.orgVariables ?? []) as {
+		name?: string;
+		value?: unknown;
+		category?: string;
+		cascade?: boolean;
+	}[];
+	if (orgVariables.length === 0) return 'No configuration variables found for this organization.';
+	return orgVariables
+		.map(variable => {
+			const category = variable.category ?? 'unknown';
+			return `${variable.name ?? '(unnamed)'} = ${variable.value ?? ''}  [${category}${variable.cascade ? ', cascade' : ''}]`;
+		})
+		.join('\n');
+}
+
+type ExecutionVariableKind = 'input' | 'output' | 'context';
+
+function renderVariableValue(value: unknown): string {
+	if (value === null || value === undefined) return String(value);
+	if (typeof value === 'string') return value;
+	if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+}
+
+function flattenExecutionContextFrames(frames: unknown): Record<string, unknown> {
+	const flat: Record<string, unknown> = {};
+	if (!Array.isArray(frames)) return flat;
+	for (const frame of frames) {
+		if (frame && typeof frame === 'object') {
+			for (const [key, value] of Object.entries(frame as Record<string, unknown>)) flat[key] = value;
+		}
+	}
+	return flat;
+}
+
+function matchExecutionVariables(
+	vars: Record<string, unknown>,
+	nameNeedle: string,
+	valueNeedle: string | undefined,
+): string[] {
+	const matches: string[] = [];
+	for (const [key, value] of Object.entries(vars)) {
+		if (!key.toLowerCase().includes(nameNeedle)) continue;
+		const rendered = renderVariableValue(value);
+		if (valueNeedle && !rendered.toLowerCase().includes(valueNeedle)) continue;
+		const shown = rendered.length > 80 ? `${rendered.slice(0, 80)}...` : rendered;
+		matches.push(`${key}=${shown}`);
+	}
+	return matches;
+}
+
+async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const {
+		orgId,
+		workflowId,
+		name: rawName,
+		kind: rawKind,
+		value: valueArg,
+		limit: rawLimit,
+	} = parseCapabilityInput(findExecutionsByVariableInputSchema, input);
+	const kind: ExecutionVariableKind = rawKind ?? 'input';
+	const nameNeedle = rawName.toLowerCase();
+	const valueNeedle = valueArg ? valueArg.toLowerCase() : undefined;
+	const limit = rawLimit ?? DEFAULT_EXECUTION_LIMIT;
+
+	const data = await rawGraphqlOrThrow(ctx.session, EXECUTIONS_WITH_IO_QUERY, { orgId, workflowId, limit });
+	const executions = ((data as { workflowExecutions?: unknown[] } | undefined)?.workflowExecutions ?? []) as {
+		id?: string;
+		status?: string;
+		createdAt?: string;
+		conductor?: { input?: unknown; output?: unknown };
+	}[];
+
+	let skipped = 0;
+	const varsByExecution = await mapWithConcurrency(executions, 10, async execution => {
+		if (kind === 'input' || kind === 'output') {
+			const raw = execution.conductor?.[kind];
+			return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+		}
+		try {
+			const data = await rawGraphqlOrThrow(ctx.session, EXECUTION_CONTEXTS_QUERY, {
+				workflowExecutionId: execution.id,
+			});
+			return flattenExecutionContextFrames(
+				(data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
+			);
+		} catch {
+			skipped += 1;
+			return {};
+		}
+	});
+
+	const lines: string[] = [];
+	executions.forEach((execution, index) => {
+		const matches = matchExecutionVariables(varsByExecution[index], nameNeedle, valueNeedle);
+		if (matches.length > 0) {
+			lines.push(
+				`${execution.status ?? '(unknown status)'} — ${execution.id} (created ${execution.createdAt}) — ${kind}: ${matches.join(', ')}`,
+			);
+		}
+	});
+
+	if (lines.length === 0) {
+		const valuePart = valueArg ? ` with value containing "${valueArg}"` : '';
+		return `No executions of this workflow (scanned ${executions.length}) had a ${kind} variable matching "${rawName}"${valuePart}.`;
+	}
+	let result = lines.join('\n');
+	if (skipped > 0) result += `\n\n(${skipped} execution context fetch(es) failed and were skipped.)`;
+	if (executions.length >= limit) {
+		result += `\n\n(Scanned the ${limit} most-recent executions; raise limit — max ${MAX_EXECUTION_LIMIT} — to scan more.)`;
+	}
+	return result;
+}
+
+// orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by workflow id alone.
+async function runListWorkflowTasks(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { workflowId, limit: rawLimit } = parseCapabilityInput(listWorkflowTasksInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_TASK_LIMIT;
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_TASKS_QUERY, { workflowId, limit });
+	const workflowTasks = ((data as { workflowTasks?: unknown[] } | undefined)?.workflowTasks ?? []) as {
+		id?: string;
+		name?: string;
+		actionId?: string | null;
+		workflowId?: string;
+		isMocked?: boolean;
+		timeout?: number | null;
+		description?: string | null;
+	}[];
+	if (workflowTasks.length === 0) return `No workflow tasks found for workflow ${workflowId}.`;
+	return workflowTasks
+		.map(
+			task =>
+				`${task.name ?? '(unnamed)'} (${task.id})${task.actionId ? ` — action ${task.actionId}` : ''}${
+					task.isMocked === true ? ' [mocked]' : ''
+				}${task.timeout != null ? ` — timeout ${task.timeout}` : ''}${task.description ? ` — ${task.description}` : ''}`,
+		)
+		.join('\n');
+}
+
+function formatEpochMs(value: unknown): string {
+	const n = Number(value);
+	return Number.isFinite(n) ? new Date(n).toISOString() : String(value);
+}
+
+// orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by workflow id alone.
+async function runListWorkflowPatches(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { workflowId, username, limit: rawLimit } = parseCapabilityInput(listWorkflowPatchesInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_PATCH_LIMIT;
+	const fetchLimit = username ? MAX_PATCH_LIMIT : limit;
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCHES_QUERY, { workflowId, limit: fetchLimit });
+	let workflowPatches = ((data as { workflowPatches?: unknown[] } | undefined)?.workflowPatches ?? []) as {
+		id?: string;
+		patchType?: string;
+		comment?: string | null;
+		commentDescription?: string | null;
+		workflowId?: string;
+		createdAt?: string;
+		user?: { id: string; username: string } | null;
+	}[];
+	if (username) {
+		const lower = username.toLowerCase();
+		workflowPatches = workflowPatches.filter(p => p.user?.username?.toLowerCase().includes(lower));
+		workflowPatches = workflowPatches.slice(0, limit);
+	}
+	if (workflowPatches.length === 0) {
+		return username
+			? `No workflow patches found for workflow ${workflowId} by a user matching "${username}".`
+			: `No workflow patches found for workflow ${workflowId}.`;
+	}
+	return workflowPatches
+		.map(
+			patch =>
+				`${patch.patchType ?? '(unknown patch type)'} — ${patch.id}${patch.comment ? `: ${patch.comment}` : ''} (created ${
+					patch.createdAt
+				}) by ${patch.user?.username ?? '(unknown user)'}`,
+		)
+		.join('\n');
+}
+
+async function runRecentWorkflowEdits(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, username, limit: rawLimit } = parseCapabilityInput(recentWorkflowEditsInputSchema, input);
+	const effectiveLimit = rawLimit ?? DEFAULT_RECENT_EDITS_LIMIT;
+	const fetchLimit = username ? MAX_RECENT_EDITS_LIMIT * 2 : effectiveLimit;
+	const data = await rawGraphqlOrThrow(ctx.session, RECENT_WORKFLOW_EDITS_QUERY, { orgId, limit: fetchLimit });
+	let workflows = ((data as { workflows?: unknown[] } | undefined)?.workflows ?? []) as {
+		id: string;
+		name: string;
+		updatedAt: unknown;
+		updatedBy?: { id: string; username: string } | null;
+	}[];
+	if (username) {
+		const lower = username.toLowerCase();
+		workflows = workflows.filter(w => w.updatedBy?.username?.toLowerCase().includes(lower));
+		workflows = workflows.slice(0, effectiveLimit);
+	}
+	if (workflows.length === 0) {
+		return username
+			? `No workflows in org ${orgId} were last edited by a user matching "${username}".`
+			: `No recently edited workflows found for org ${orgId}.`;
+	}
+	return workflows
+		.map(
+			w =>
+				`${w.name} (${w.id}) — updated ${formatEpochMs(w.updatedAt)} by ${
+					w.updatedBy?.username ?? '(unknown user)'
+				}`,
+		)
+		.join('\n');
+}
+
+// orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by patch id alone.
+async function runGetWorkflowPatch(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { patchId } = parseCapabilityInput(getWorkflowPatchInputSchema, input);
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCH_QUERY, { id: patchId });
+	const workflowPatch = (data as { workflowPatch?: unknown | null } | undefined)?.workflowPatch;
+	if (!workflowPatch) return `No workflow patch found for patch id ${patchId}.`;
+	return JSON.stringify(workflowPatch, null, 2);
+}
+
+async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, createdSince } = parseCapabilityInput(getWorkflowExecutionStatsInputSchema, input);
+	const variables = { orgId, createdSince };
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTION_STATS_QUERY, variables);
+	const stats = (
+		data as
+			| {
+					workflowExecutionStats?: {
+						succeeded?: number;
+						failed?: number;
+						running?: number;
+						pending?: number;
+						paused?: number;
+						delayed?: number;
+						humanSecondsSaved?: number;
+					} | null;
+			  }
+			| undefined
+	)?.workflowExecutionStats;
+	if (!stats) return `No workflow execution stats found since ${createdSince}.`;
+	return [
+		`succeeded: ${stats.succeeded ?? 0}`,
+		`failed: ${stats.failed ?? 0}`,
+		`running: ${stats.running ?? 0}`,
+		`pending: ${stats.pending ?? 0}`,
+		`paused: ${stats.paused ?? 0}`,
+		`delayed: ${stats.delayed ?? 0}`,
+		`humanSecondsSaved: ${stats.humanSecondsSaved ?? 0}`,
+	].join('\n');
+}
+
+async function runResolveReference(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, modelType, search, limit: rawLimit } = parseCapabilityInput(resolveReferenceInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_REFERENCE_LIMIT;
+	const variables: Record<string, unknown> = { orgId, modelName: modelType, limit };
+	if (search) variables.search = search;
+	const data = await rawGraphqlOrThrow(ctx.session, RESOLVE_REFERENCE_QUERY, variables);
+	const options = ((data as { localReferenceOptions?: unknown[] } | undefined)?.localReferenceOptions ?? []) as {
+		label?: string;
+		value?: string;
+	}[];
+	if (options.length === 0) {
+		return `No matches found for ${modelType}${search ? ` matching "${search}"` : ''} in this organization.`;
+	}
+	return options.map(option => `${option.label} (${option.value})`).join('\n');
+}
+
+async function runGetWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, workflowId } = parseCapabilityInput(getWorkflowInputSchema, input);
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_QUERY, { id: workflowId });
+	const workflow = (data as { workflow?: { orgId?: unknown } } | undefined)?.workflow;
+	if (!workflow) throw new Error(`Workflow not found: ${workflowId}`);
+	// workflow(where:{id}) ignores org, so enforce the requested orgId here.
+	// Fail closed: reject when orgId is absent as well as when it mismatches.
+	if (typeof workflow.orgId !== 'string' || workflow.orgId !== orgId) {
+		throw new Error(`Workflow ${workflowId} is not in org ${orgId}.`);
+	}
+	return JSON.stringify(workflow, null, 2);
+}
+
+async function runGraphqlQuery(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, query, variables: parsedVariables } = parseCapabilityInput(graphqlQueryInputSchema, input);
+	const rawVariables = input.variables;
+	if (
+		rawVariables !== undefined &&
+		(typeof rawVariables !== 'object' || rawVariables === null || Array.isArray(rawVariables))
+	) {
+		throw new Error('"variables" must be a JSON object when provided.');
+	}
+	const variables = (rawVariables as Record<string, unknown> | undefined) ?? {};
+	// Bind the declared org boundary: a raw query must not silently target a
+	// different org than the caller named. Reject a conflicting orgId variable and
+	// pass the requested orgId through for queries that take an $orgId.
+	if (variables.orgId !== undefined && variables.orgId !== orgId) {
+		throw new Error('"variables.orgId" must match the requested "orgId".');
+	}
+	return runReadonlyGraphql(query, { ...variables, orgId }, (q, v) => ctx.session.rawGraphql(q, v));
+}
+
+export const READ_CAPABILITIES: Capability[] = [
+	readCapability(listOrgsSpec, runListOrgs, { requiresOrg: false }),
+	readCapability(getTemplateSpec, runGetTemplate),
+	readCapability(listWorkflowsSpec, runListWorkflows),
+	readCapability(listOrgVariablesSpec, runListOrgVariables),
+	readCapability(findExecutionsByVariableSpec, runFindExecutionsByVariable),
+	readCapability(listWorkflowTasksSpec, runListWorkflowTasks),
+	readCapability(listWorkflowPatchesSpec, runListWorkflowPatches),
+	readCapability(getWorkflowPatchSpec, runGetWorkflowPatch),
+	readCapability(recentWorkflowEditsSpec, runRecentWorkflowEdits),
+	readCapability(getWorkflowExecutionStatsSpec, runGetWorkflowExecutionStats),
+	readCapability(resolveReferenceSpec, runResolveReference),
+	readCapability(getWorkflowSpec, runGetWorkflow),
+	readCapability(graphqlQuerySpec, runGraphqlQuery),
+];

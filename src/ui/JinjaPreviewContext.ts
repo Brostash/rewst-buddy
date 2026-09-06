@@ -5,22 +5,12 @@
  */
 
 import vscode from 'vscode';
+import { editorDataClient } from '../backend/editorDataClient';
 import type { JinjaPreviewContextEntry } from '../models/JinjaPreviewContextStore';
-import type { GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
-import type { ExecutionRow } from '../workflow/executions';
-import { fetchExecutionContextSnapshots, WORKFLOW_EXECUTIONS_QUERY } from '../workflow/executions';
-import { firstErrorMessage, isPlainObject, type ExecResult } from '../workflow/types';
-
-const WORKFLOWS_QUERY = `query RewstBuddyPreviewWorkflows($orgId: ID!, $limit: Int, $offset: Int) {
-	workflows(where: { orgId: $orgId }, limit: $limit, offset: $offset, order: [["name", "asc"]]) {
-		id
-		name
-		orgId
-	}
-}`;
-
-const WORKFLOW_PICK_LIMIT = 500;
-const WORKFLOW_PICK_MAX_PAGES = 100;
+import type {
+	PreviewExecutionRow as ExecutionRow,
+	PreviewWorkflowRow as WorkflowRow,
+} from '../backend/editorDataClient';
 
 // ---------------------------------------------------------------------------
 // mergeExecutionContext
@@ -30,12 +20,26 @@ const WORKFLOW_PICK_MAX_PAGES = 100;
  * Fetch and merge all context snapshots for an execution into one object.
  * Later snapshots win on key conflicts (same semantics as runRenderJinja).
  */
-export async function mergeExecutionContext(
-	deps: GraphqlToolDeps,
+export function mergeExecutionContext(
+	sessionId: string,
+	orgId: string,
 	executionId: string,
+): Promise<Record<string, unknown>>;
+/** @deprecated Kept as a type-compatible migration seam; data access requires a session id. */
+export function mergeExecutionContext(legacyDeps: unknown, executionId: string): Promise<Record<string, unknown>>;
+export async function mergeExecutionContext(
+	sessionOrLegacy: unknown,
+	orgIdOrExecutionId: string,
+	executionId?: string,
 ): Promise<Record<string, unknown>> {
-	const snapshots = await fetchExecutionContextSnapshots(deps, executionId);
-	return Object.assign({}, ...snapshots.filter(isPlainObject)) as Record<string, unknown>;
+	if (typeof sessionOrLegacy !== 'string' || executionId === undefined) {
+		throw new Error('Jinja preview context now requires sessionId and orgId.');
+	}
+	return editorDataClient.getPreviewContext({
+		sessionId: sessionOrLegacy,
+		orgId: orgIdOrExecutionId,
+		executionId,
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -73,34 +77,13 @@ export function buildExecutionQuickPickItems(rows: ExecutionRow[]): ExecutionQui
 export interface JinjaPreviewOrgPickItem extends vscode.QuickPickItem {
 	orgId: string;
 	orgName: string;
-}
-
-interface WorkflowRow {
-	id?: string | null;
-	name?: string | null;
-	orgId?: string | null;
+	sessionId?: string;
 }
 
 interface WorkflowQuickPickItem extends vscode.QuickPickItem {
 	workflowId: string;
 	workflowName: string;
 	orgId: string;
-}
-
-async function fetchWorkflowRows(deps: GraphqlToolDeps, orgId: string): Promise<WorkflowRow[]> {
-	const rows: WorkflowRow[] = [];
-	for (let page = 0; page < WORKFLOW_PICK_MAX_PAGES; page++) {
-		const offset = page * WORKFLOW_PICK_LIMIT;
-		const result = await deps.execute(WORKFLOWS_QUERY, { orgId, limit: WORKFLOW_PICK_LIMIT, offset });
-		const error = firstErrorMessage(result as ExecResult);
-		if (error) throw new Error(`Failed to list workflows: ${error}`);
-		const pageRows = ((result.data as { workflows?: (WorkflowRow | null)[] } | undefined)?.workflows ?? []).filter(
-			(row): row is WorkflowRow => !!row?.id,
-		);
-		rows.push(...pageRows);
-		if (pageRows.length < WORKFLOW_PICK_LIMIT) break;
-	}
-	return rows;
 }
 
 function buildWorkflowQuickPickItems(rows: WorkflowRow[], orgId: string): WorkflowQuickPickItem[] {
@@ -113,13 +96,22 @@ function buildWorkflowQuickPickItems(rows: WorkflowRow[], orgId: string): Workfl
 	}));
 }
 
+function optionsSessionId(
+	resolver: ((orgId: string) => string | undefined) | undefined,
+	item: JinjaPreviewOrgPickItem,
+): string | undefined {
+	return resolver?.(item.orgId) ?? item.sessionId;
+}
+
 // ---------------------------------------------------------------------------
 // pickJinjaExecutionContext
 // ---------------------------------------------------------------------------
 
 export interface PickJinjaExecutionContextOptions {
 	orgItems: JinjaPreviewOrgPickItem[];
-	depsForOrg(orgId: string): Promise<GraphqlToolDeps>;
+	sessionIdForOrg?: (orgId: string) => string | undefined;
+	/** @deprecated Data access is handled by editorDataClient. */
+	depsForOrg?: unknown;
 	initialOrgId?: string;
 }
 
@@ -129,7 +121,7 @@ export interface PickJinjaExecutionContextOptions {
  */
 export async function pickJinjaExecutionContext({
 	orgItems,
-	depsForOrg,
+	sessionIdForOrg,
 	initialOrgId,
 }: PickJinjaExecutionContextOptions): Promise<JinjaPreviewContextEntry | undefined> {
 	if (orgItems.length === 0) {
@@ -143,8 +135,10 @@ export async function pickJinjaExecutionContext({
 	});
 	if (!pickedOrg) return undefined;
 
-	const deps = await depsForOrg(pickedOrg.orgId);
-	const workflowItems = buildWorkflowQuickPickItems(await fetchWorkflowRows(deps, pickedOrg.orgId), pickedOrg.orgId);
+	const sessionId = optionsSessionId(sessionIdForOrg, pickedOrg);
+	if (!sessionId) throw new Error(`No active session found for organization "${pickedOrg.orgId}".`);
+	const workflowRows = await editorDataClient.listPreviewWorkflows({ sessionId, orgId: pickedOrg.orgId });
+	const workflowItems = buildWorkflowQuickPickItems(workflowRows, pickedOrg.orgId);
 	if (workflowItems.length === 0) {
 		void vscode.window.showWarningMessage(`No workflows found for organization "${pickedOrg.orgName}".`);
 		return undefined;
@@ -157,27 +151,14 @@ export async function pickJinjaExecutionContext({
 	});
 	if (!pickedWorkflow) return undefined;
 
-	// Step 2: execution pick. Root-scoped first (workflowId+orgId); a workflow that
-	// only ever runs as a sub-workflow has its executions recorded under the
-	// caller's orgId, so an empty root query falls back to workflowId alone
-	// (mirrors buddy_workflow_executions' rootOnly:false fallback).
-	const fetchExecRows = async (where: Record<string, string>): Promise<ExecutionRow[]> => {
-		const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
-			where,
-			order: [['createdAt', 'desc']],
-			limit: 20,
-		});
-		const error = firstErrorMessage(result as ExecResult);
-		if (error) throw new Error(`Failed to list executions: ${error}`);
-		return (
-			(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
-		).filter((r): r is ExecutionRow => !!r);
-	};
-
-	let execRows = await fetchExecRows({ workflowId: pickedWorkflow.workflowId, orgId: pickedWorkflow.orgId });
-	if (execRows.length === 0) {
-		execRows = await fetchExecRows({ workflowId: pickedWorkflow.workflowId });
-	}
+	// Step 2: execution pick. The backend checks the selected org first; a
+	// workflow that only ever runs as a sub-workflow can then fall back to its
+	// workflow id alone (mirrors buddy_workflow_executions' rootOnly:false behavior).
+	const execRows = await editorDataClient.listPreviewExecutions({
+		sessionId,
+		orgId: pickedWorkflow.orgId,
+		workflowId: pickedWorkflow.workflowId,
+	});
 
 	const execItems = buildExecutionQuickPickItems(execRows);
 

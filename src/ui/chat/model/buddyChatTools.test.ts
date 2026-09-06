@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -74,7 +75,7 @@ suite('Unit: buddyChatTools', () => {
 			// in-process and exercises the normal { text, isError: false } return path.
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
 			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-			SessionManager._setSessionsForTesting([session]);
+			installMockSessions([session]);
 
 			const result = await runBuddyChatTool('buddy_list_orgs', {}, 'org-1');
 

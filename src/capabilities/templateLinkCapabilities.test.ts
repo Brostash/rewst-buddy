@@ -1,4 +1,4 @@
-import type { CapabilityContext } from '@capabilities';
+import type { CapabilityContext } from './EditorCapability';
 import { LinkManager, SyncOnSaveManager, type TemplateLink } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
 import { initTestEnvironment } from '@test';

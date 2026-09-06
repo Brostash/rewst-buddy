@@ -4,7 +4,7 @@ import { uriExists } from '@utils';
 import vscode from 'vscode';
 import { z } from 'zod';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
-import type { Capability, CapabilityContext } from './Capability';
+import type { Capability, CapabilityContext } from './EditorCapability';
 import { readCapability } from './capabilityFactories';
 import {
 	getTemplateFromAnySession,

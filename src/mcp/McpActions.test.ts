@@ -1,6 +1,6 @@
 import { MCP_MAX_OUTPUT_CHARS, RESULT_READ_TOOL_NAME, _resetMcpResultCacheForTesting } from '@capabilities';
-import { WorkingScopeManager } from '@models';
-import { SessionManager, type Session } from '@sessions';
+import { WorkingScopeManager } from '../../packages/mcp-server/src/models/WorkingScopeManager';
+import { SessionManager, type Session } from '../../packages/mcp-server/src/sessions';
 import { Fixtures, createMockSession, initTestEnvironment } from '@test';
 import { log } from '@utils';
 import {
@@ -14,7 +14,14 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
-import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
+import {
+	McpError,
+	_resetMcpThrottleForTesting,
+	callTool,
+	listResources,
+	listTools,
+	readResource,
+} from '../../packages/mcp-server/src/mcp/McpActions';
 import type { McpSettings } from './settings';
 
 const { suite, test, setup, teardown } = Mocha;

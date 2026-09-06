@@ -5,7 +5,7 @@ import {
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
-import type { Session } from '@sessions';
+import type { Session } from '../../../packages/mcp-server/src/sessions';
 import { clearCachedSession, getTestOrgId, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import { runWorkflowTool } from '@workflow';
 import * as assert from 'assert';

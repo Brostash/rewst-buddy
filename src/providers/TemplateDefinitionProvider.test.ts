@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -102,7 +103,7 @@ suite('Unit: TemplateDefinitionProvider', () => {
 			]),
 		});
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		TemplateMetadataStore.init();
 		await waitFor(() => TemplateMetadataStore.getTemplateMetadata(CACHED_TEMPLATE_ID) !== undefined);
 
@@ -170,7 +171,7 @@ suite('Unit: TemplateDefinitionProvider', () => {
 			]),
 		});
 		wrapper.when('getTemplate', { error: new Error('fetch exploded') });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		TemplateMetadataStore.init();
 		await waitFor(() => TemplateMetadataStore.getTemplateMetadata(CACHED_TEMPLATE_ID) !== undefined);
 

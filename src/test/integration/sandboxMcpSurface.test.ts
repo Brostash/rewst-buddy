@@ -1,7 +1,8 @@
+import { installMockSessions } from '@test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { WorkingScopeManager } from '@models';
-import { SessionManager, type Session } from '@sessions';
+import { WorkingScopeManager } from '../../../packages/mcp-server/src/models/WorkingScopeManager';
+import { SessionManager, type Session } from '../../../packages/mcp-server/src/sessions';
 import { clearCachedSession, getTestOrgId, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import { randomUUID } from 'crypto';
@@ -46,7 +47,7 @@ suite('Integration: sandbox MCP surface', function () {
 		if (session.profile.org.id !== orgId || session.profile.allManagedOrgs.length !== 1) {
 			throw new Error('Safety invariant failed: MCP integration session is not sandbox-only.');
 		}
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		WorkingScopeManager._resetForTesting();
 		WorkingScopeManager.setOrgs([orgId]);
 

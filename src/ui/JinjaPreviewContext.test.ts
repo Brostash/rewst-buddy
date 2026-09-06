@@ -9,6 +9,7 @@ import { initTestEnvironment, stub } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
+import { editorDataClient } from '../backend/editorDataClient';
 import type { GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import type { ExecutionRow } from '../workflow/executions';
 import {
@@ -18,22 +19,99 @@ import {
 	type JinjaPreviewOrgPickItem,
 } from './JinjaPreviewContext';
 
-const { suite, test, setup } = Mocha;
+const { suite, test, setup, teardown } = Mocha;
+
+const originalListPreviewWorkflows = editorDataClient.listPreviewWorkflows;
+const originalListPreviewExecutions = editorDataClient.listPreviewExecutions;
+const originalGetPreviewContext = editorDataClient.getPreviewContext;
 
 type FakeExecuteHandler = (query: string, variables?: Record<string, unknown>) => Promise<unknown>;
 
 function makeDeps(handler: FakeExecuteHandler, cacheScope?: string): GraphqlToolDeps {
-	return {
+	const deps = {
 		isEnabled: () => true,
 		confirmMutation: async () => true,
 		execute: handler as GraphqlToolDeps['execute'],
 		cacheScope,
 	};
+	activeDeps = deps;
+	return deps;
+}
+
+let activeDeps: GraphqlToolDeps | undefined;
+
+function responseError(result: unknown): string | undefined {
+	const errors = (result as { errors?: unknown } | undefined)?.errors;
+	if (!Array.isArray(errors) || errors.length === 0) return undefined;
+	return errors
+		.map(error =>
+			error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
+				? (error as { message: string }).message
+				: String(error),
+		)
+		.join('; ');
 }
 
 suite('Unit: JinjaPreviewContext', () => {
 	setup(() => {
 		initTestEnvironment();
+		activeDeps = undefined;
+		(editorDataClient.listPreviewWorkflows as any) = async ({ orgId }: { orgId: string }) => {
+			if (!activeDeps) throw new Error('test client has no active GraphQL seam');
+			const rows: any[] = [];
+			for (let offset = 0; ; offset += 500) {
+				const result = await activeDeps.execute('RewstBuddyPreviewWorkflows', { orgId, limit: 500, offset });
+				const error = responseError(result);
+				if (error) throw new Error(`Failed to list workflows: ${error}`);
+				const page = ((result.data as { workflows?: any[] } | undefined)?.workflows ?? []).filter(
+					row => !!row?.id,
+				);
+				rows.push(...page);
+				if (page.length < 500 || offset >= 49_500) return rows;
+			}
+		};
+		(editorDataClient.listPreviewExecutions as any) = async ({
+			orgId,
+			workflowId,
+		}: {
+			orgId: string;
+			workflowId: string;
+		}) => {
+			if (!activeDeps) throw new Error('test client has no active GraphQL seam');
+			const read = async (where: Record<string, string>) => {
+				const result = await activeDeps!.execute('RewstBuddyExecutions', {
+					where,
+					order: [['createdAt', 'desc']],
+					limit: 20,
+				});
+				const error = responseError(result);
+				if (error) throw new Error(`Failed to list executions: ${error}`);
+				return ((result.data as { workflowExecutions?: any[] } | undefined)?.workflowExecutions ?? []).filter(
+					Boolean,
+				);
+			};
+			const scoped = await read({ workflowId, orgId });
+			return scoped.length > 0 ? scoped : read({ workflowId });
+		};
+		(editorDataClient.getPreviewContext as any) = async ({ executionId }: { executionId: string }) => {
+			if (!activeDeps) throw new Error('test client has no active GraphQL seam');
+			const result = await activeDeps.execute('RewstBuddyExecutionContexts', { id: executionId });
+			const error = responseError(result);
+			if (error) throw new Error(`Failed to read execution context: ${error}`);
+			const raw = (result.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts;
+			const snapshots = Array.isArray(raw) ? raw : raw ? [raw] : [];
+			if (snapshots.length === 0) throw new Error(`Execution ${executionId} has no context to render against.`);
+			return Object.assign(
+				{},
+				...snapshots.filter(value => value && typeof value === 'object' && !Array.isArray(value)),
+			);
+		};
+	});
+	teardown(() => {
+		editorDataClient.listPreviewWorkflows = originalListPreviewWorkflows;
+		editorDataClient.listPreviewExecutions = originalListPreviewExecutions;
+		editorDataClient.getPreviewContext = originalGetPreviewContext;
+		activeDeps = undefined;
 	});
 
 	suite('mergeExecutionContext()', () => {
@@ -47,7 +125,7 @@ suite('Unit: JinjaPreviewContext', () => {
 				return { data: {} };
 			});
 
-			const merged = await mergeExecutionContext(deps, 'exec-1');
+			const merged = await mergeExecutionContext('session-1', 'org-1', 'exec-1');
 
 			assert.deepStrictEqual(merged, { a: 2, b: 3 });
 		});
@@ -60,7 +138,7 @@ suite('Unit: JinjaPreviewContext', () => {
 				return { data: {} };
 			});
 
-			await assert.rejects(() => mergeExecutionContext(deps, 'exec-empty'), /no context/i);
+			await assert.rejects(() => mergeExecutionContext('session-1', 'org-1', 'exec-empty'), /no context/i);
 		});
 	});
 
@@ -101,8 +179,8 @@ suite('Unit: JinjaPreviewContext', () => {
 
 	suite('pickJinjaExecutionContext()', () => {
 		const orgItems: JinjaPreviewOrgPickItem[] = [
-			{ label: 'Org One', description: 'org-1', orgId: 'org-1', orgName: 'Org One' },
-			{ label: 'Org Two', description: 'org-2', orgId: 'org-2', orgName: 'Org Two' },
+			{ label: 'Org One', description: 'org-1', orgId: 'org-1', orgName: 'Org One', sessionId: 'session-1' },
+			{ label: 'Org Two', description: 'org-2', orgId: 'org-2', orgName: 'Org Two', sessionId: 'session-1' },
 		];
 
 		test('paginates workflows for the selected org before showing the workflow picker', async () => {
@@ -224,7 +302,6 @@ suite('Unit: JinjaPreviewContext', () => {
 
 				assert.deepStrictEqual(events, [
 					'show:Jinja Preview: Pick Org',
-					'deps-for-org:org-2',
 					'workflow-query:org-2',
 					'show:Jinja Preview: Pick Workflow',
 					'executions-query',
@@ -440,7 +517,14 @@ suite('Unit: JinjaPreviewContext', () => {
 
 			try {
 				const entry = await pickJinjaExecutionContext({
-					orgItems: [{ label: 'Workflow Org', orgId: 'workflow-org', orgName: 'Workflow Org' }],
+					orgItems: [
+						{
+							label: 'Workflow Org',
+							orgId: 'workflow-org',
+							orgName: 'Workflow Org',
+							sessionId: 'session-1',
+						},
+					],
 					depsForOrg: async () => deps,
 					initialOrgId: 'workflow-org',
 				});

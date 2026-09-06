@@ -853,11 +853,11 @@
 		"format:pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json,md}\"",
 		"format:eslint": "eslint --fix src",
 		"format": "npm-run-all -p format:*",
-		"lint": "eslint src",
-		"type-check": "tsc --noEmit",
+		"lint": "eslint src packages/mcp-server/src",
+		"type-check": "tsc --noEmit && tsc --noEmit -p packages/mcp-server",
 		"codegen": "graphql-codegen --config src/codegen.ts",
 		"codegen:refresh-schema": "graphql-codegen --config src/codegen.schema.ts",
-		"codegen:check": "npm run codegen && git diff --exit-code src/sessions/graphql/generated/ || (echo 'Generated GraphQL output is out of sync! Run: npm run codegen' && exit 1)",
+		"codegen:check": "npm run codegen && git diff --exit-code packages/mcp-server/src/sessions/graphql/generated/ || (echo 'Generated GraphQL output is out of sync! Run: npm run codegen' && exit 1)",
 		"lint:staged": "lint-staged",
 		"pre-commit": "bash .husky/pre-commit",
 		"check-types": "tsc --noEmit --watch",
@@ -882,7 +882,9 @@
 		"test:changelog": "npm run test:changelog:tools && npm run test:changelog:ci",
 		"test:changelog:tools": "node --test scripts/changelog/*.test.mjs",
 		"test:changelog:ci": "node scripts/changelog/check.mjs --base main --include-working-tree",
-		"release:tag": "git tag v$npm_package_version && git push origin v$npm_package_version"
+		"release:tag": "git tag v$npm_package_version && git push origin v$npm_package_version",
+		"build:mcp": "npm run build --workspace rewst-buddy-mcp",
+		"test:mcp": "vitest run --config packages/mcp-server/vitest.config.ts && npm test --workspace rewst-buddy-mcp"
 	},
 	"devDependencies": {
 		"@0no-co/graphqlsp": "^1.15.2",
@@ -928,7 +930,7 @@
 		"ws": "^8.18.3"
 	},
 	"lint-staged": {
-		"src/sessions/graphql/generated/**": [],
+		"packages/mcp-server/src/sessions/graphql/generated/**": [],
 		"*.{ts,js,mjs,cjs}": [
 			"eslint --fix",
 			"prettier --write"
@@ -944,5 +946,8 @@
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"zod": "^4.4.3"
-	}
+	},
+	"workspaces": [
+		"packages/mcp-server"
+	]
 }

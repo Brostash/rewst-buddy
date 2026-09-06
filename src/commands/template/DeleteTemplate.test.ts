@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
@@ -82,7 +83,7 @@ suite('Unit: DeleteTemplate', () => {
 		linkFile(uri, org, templateId);
 
 		wrapper.when('deleteTemplate', { data: { __typename: 'Mutation', deleteTemplate: templateId } });
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubConfirm('Delete');
 
 		await new DeleteTemplate().execute([uri]);
@@ -100,7 +101,7 @@ suite('Unit: DeleteTemplate', () => {
 		const templateId = 'tpl-keep';
 		linkFile(uri, org, templateId);
 
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 		stubConfirm(undefined);
 
 		await new DeleteTemplate().execute([uri]);

@@ -22,15 +22,7 @@ export function throwOnGraphqlErrors(errors: unknown): void {
  * Runs a raw GraphQL operation and throws with the serialized errors when the
  * response carries any, so a failure is never silently treated as empty data.
  */
-export async function rawGraphqlOrThrow(
-	session: Session,
-	query: string,
-	variables?: Record<string, unknown>,
-): Promise<unknown> {
-	const { data, errors } = await session.rawGraphql(query, variables);
-	throwOnGraphqlErrors(errors);
-	return data;
-}
+export { rawGraphqlOrThrow } from '../../packages/mcp-server/src/capabilities/inputHelpers';
 
 /**
  * Fetches a resource by id and fails closed unless it belongs to the requested

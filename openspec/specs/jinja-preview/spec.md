@@ -82,6 +82,9 @@ a preview panel opens for that template.
 The system SHALL debounce re-render by at least 300ms after the last document-content or selection
 change in the previewed document, rendering the current non-empty selection if one exists, else the
 whole document body.
+The text sent for rendering SHALL preserve all leading and trailing whitespace,
+including line endings. Empty and whitespace-only template bodies SHALL remain
+valid render inputs.
 
 #### Scenario: Rapid typing
 
@@ -95,6 +98,18 @@ whole document body.
 - **GIVEN** a picked context and a non-empty text selection in the previewed document
 - **WHEN** the debounce fires
 - **THEN** only the selected text is rendered, not the full document
+
+#### Scenario: Template whitespace is significant
+
+- **GIVEN** the previewed text includes leading spaces or trailing line endings
+- **WHEN** the render request is sent through the server
+- **THEN** it contains the exact previewed text without trimming
+
+#### Scenario: Empty or whitespace-only template
+
+- **GIVEN** the previewed document is empty or contains only whitespace
+- **WHEN** the render request is sent
+- **THEN** the server renders that text without rejecting it as a missing input
 
 ### Requirement: Render errors and warnings surface in the panel, not as thrown exceptions
 

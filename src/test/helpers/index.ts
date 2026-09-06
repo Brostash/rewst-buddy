@@ -26,3 +26,5 @@ export type { RawGraphqlCall } from './capabilityTestUtils';
 
 export { close, createRefreshableSessionServer, listen, refreshableSessionProfile } from './refreshableServer';
 export type { RefreshableSessionServer } from './refreshableServer';
+
+export { installMockSessions, installMockProfiles, installMockSessionsAndWait } from './seedSessions';

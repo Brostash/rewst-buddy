@@ -1,7 +1,7 @@
 import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createRetryWrapper } from './retryWrapper';
+import { createRetryWrapper } from '../../packages/mcp-server/src/sessions/retryWrapper';
 
 const { suite, test, setup } = Mocha;
 

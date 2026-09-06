@@ -4,7 +4,7 @@ import {
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
-import type { Session } from '@sessions';
+import type { Session } from '../../packages/mcp-server/src/sessions';
 import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';

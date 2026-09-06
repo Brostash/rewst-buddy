@@ -1,4 +1,4 @@
-import { RegionConfig } from './RegionConfig';
+import type { RegionConfig } from './RegionConfig';
 
 export default class CookieString {
 	constructor(public readonly value: string) {}

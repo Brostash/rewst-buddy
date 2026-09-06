@@ -1,4 +1,4 @@
-import { SessionManager } from '@sessions';
+import { SessionManager } from '../../packages/mcp-server/src/sessions/SessionManager';
 import {
 	close,
 	createMockSession,
@@ -12,8 +12,9 @@ import * as assert from 'assert';
 import { createServer, type Server } from 'http';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import Session from './Session';
-import SessionProfile from './SessionProfile';
+import { configureRuntimeHost, getRuntimeHost } from '../../packages/mcp-server/src/host';
+import Session from '../../packages/mcp-server/src/sessions/Session';
+import SessionProfile from '../../packages/mcp-server/src/sessions/SessionProfile';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -489,6 +490,15 @@ suite('Unit: Session', () => {
 					return undefined;
 				}) as unknown as typeof vscode.commands.executeCommand),
 			);
+			configureRuntimeHost({
+				...getRuntimeHost(),
+				sessionExpired: () => {
+					void vscode.window.showErrorMessage('Session expired', 'Re-authenticate').then(choice => {
+						if (choice === 'Re-authenticate')
+							void vscode.commands.executeCommand('rewst-buddy.FocusSidebar');
+					});
+				},
+			});
 
 			const session = new Session(undefined, refreshProfile(orgId, port));
 

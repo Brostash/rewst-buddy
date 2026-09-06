@@ -1,3 +1,4 @@
+import { installMockSessions } from '@test';
 import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
@@ -62,7 +63,7 @@ suite('Unit: KeepLocalConflict', () => {
 				organization: Fixtures.org({ id: org.id, name: org.name }),
 			}),
 		});
-		SessionManager._setSessionsForTesting([session]);
+		installMockSessions([session]);
 
 		const doc = {
 			uri,

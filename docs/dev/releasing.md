@@ -1,9 +1,9 @@
 # Releasing & changelog (maintainers)
 
 The changelog is built from **per-PR notes**, and releases run through GitHub
-Actions. Approving and merging the release PR is the single human gate — it both
-lands the version on `main` and publishes to the Marketplace. There is no manual
-release skill — these workflows are the whole process.
+Actions. The VS Code extension and standalone MCP npm package have independent
+versions and tag namespaces. There is no manual release skill — these workflows
+are the whole process.
 
 ## Changelog notes
 
@@ -15,7 +15,7 @@ release skill — these workflows are the whole process.
 - `npm run changelog:build -- --version x.y.z` collates the notes into
   `CHANGELOG.md` and deletes them. `--preview` prints without writing.
 
-## Release flow
+## VS Code extension release flow
 
 1. **Prepare** — run the **Prepare release** workflow (Actions → Run workflow)
    picking a version bump (`patch`/`minor`/`major`) or an explicit version. It collates `changelog.d/` into a `## [x.y.z]`
@@ -31,6 +31,28 @@ release skill — these workflows are the whole process.
 
 > If the auto-tag ever needs re-running by hand, `npm run release:tag` from the
 > merged `main` does the same thing.
+
+## Standalone MCP npm release flow
+
+`packages/mcp-server` is independently versioned. Extension tags use `vX.Y.Z`;
+MCP package tags use `mcp-vX.Y.Z`, so publishing one artifact never implicitly
+publishes the other.
+
+1. On a feature branch, bump both the workspace manifest and lockfile with
+   `npm version X.Y.Z --workspace rewst-buddy-mcp --no-git-tag-version`. Include
+   that change in a reviewed PR and merge it to `main`.
+2. From the merged `main`, create and push the matching tag:
+
+    ```sh
+    git tag mcp-vX.Y.Z
+    git push origin mcp-vX.Y.Z
+    ```
+
+3. The **Publish MCP package** workflow checks that the tag matches
+   `packages/mcp-server/package.json`, then lints, type-checks, runs the standalone
+   tests, inspects the packed artifact, and publishes `rewst-buddy-mcp` with npm
+   provenance. The tag push is the publish approval; do not tag an unmerged
+   commit.
 
 ## Nightly (pre-release) channel
 
@@ -71,8 +93,8 @@ button in the Extensions panel.
 These live in repo settings, not in code — set them once:
 
 - **Branch ruleset on `main`**: require a pull request, ≥1 approval, conversation
-  resolution, and the `CI / Lint, type-check, build, test` + `CI / Changelog
-note` status checks; block direct pushes and force-pushes. CodeRabbit's
+  resolution, and both required CI status checks: **Lint, type-check, build,
+  test** and **Changelog note**. Block direct pushes and force-pushes. CodeRabbit's
   `request_changes_workflow` (`.coderabbit.yaml`) then counts toward the gate.
 - **`release` environment** (Settings → Environments): store the **`VSCE_PAT`**
   secret (a VS Code Marketplace PAT for the `JBramley` publisher) here as an
@@ -90,9 +112,28 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
   not the credential**: `release` answers only `v*` tags and `nightly` only the
   `main` branch, so neither can be triggered from an unmerged PR/feature branch,
   and the tag path can't mint a nightly nor the branch path a stable release. The
-  environment and its branch policy can be created with the GitHub API (`gh api
-  .../environments/nightly` + `.../deployment-branch-policies`); only the secret
-  must be added by hand.
+  environment and its branch policy can be created with the GitHub API; only the
+  secret must be added by hand.
+- **`npm` environment** (Settings → Environments): used only by
+  `publish-mcp.yml`. Restrict deployment tags to `mcp-v*.*.*` and leave required
+  reviewers empty because pushing the release tag is the approval.
+- **First npm publish and trusted publisher**: npm cannot attach a trusted
+  publisher until `rewst-buddy-mcp` exists. Create a short-lived granular npm
+  token with package read/write access and **Bypass 2FA** enabled for the bootstrap,
+  store it as the `npm` environment secret **`NPM_TOKEN`**, and push the first
+  `mcp-vX.Y.Z` tag. After that succeeds, open the package settings on npmjs.com
+  and add a GitHub Actions trusted publisher with these exact values:
+    - Organization or user: `totallynotjon`
+    - Repository: `rewst-buddy`
+    - Workflow filename: `publish-mcp.yml`
+    - Environment: `npm`
+    - Allowed action: `npm publish`
+
+    Delete the `NPM_TOKEN` environment secret and revoke the bootstrap token, then
+    set npm publishing access to require 2FA and disallow tokens. Future releases
+    authenticate through short-lived GitHub OIDC credentials; npm automatically
+    records provenance, and the workflow also requests it explicitly.
+
 - **Release-bot GitHub App** (for the Prepare release PR): the default
   `GITHUB_TOKEN` cannot open a PR, and a PR it opened would not trigger the
   required CI checks. So `release.yml` mints a short-lived token from a GitHub
@@ -114,8 +155,7 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
 
 - Workflows declare least-privilege `permissions:` and use
   `persist-credentials: false` except where a push is required.
-- Actions are referenced by major version tag. For supply-chain hardening, pin
-  them to full commit SHAs (e.g. with `pin-github-action` or `zizmor`).
+- Actions are pinned to full commit SHAs; keep them pinned when updating.
 - The publish token (`VSCE_PAT`) lives in the `release` and `nightly`
   environments and is referenced only by their publish steps. The security
   boundary is each environment's **deployment-ref scoping**, not the token (the
@@ -123,3 +163,6 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
   tag-driven Publish runs, which a merged release PR is the gate for — and
   `nightly` answers only the `main` branch, publishing pre-releases automatically
   on merge. So an unmerged PR or feature branch can read neither secret.
+- npm publication uses a GitHub-hosted runner with `id-token: write`, a pinned
+  npm CLI that supports trusted publishing, and no dependency cache. After the
+  first publish, it has no long-lived npm credential.

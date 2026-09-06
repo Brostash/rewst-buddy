@@ -1,14 +1,14 @@
 {
 	"compilerOptions": {
 		"module": "es2020",
-		"target": "es2020",
+		"target": "es2022",
 		"outDir": "dist",
-		"rootDir": "src",
+		"rootDir": ".",
 		"baseUrl": "src",
 		"moduleResolution": "bundler",
 		"esModuleInterop": true,
 		"allowSyntheticDefaultImports": true,
-		"lib": ["DOM", "DOM.Iterable", "ES2020"],
+		"lib": ["DOM", "DOM.Iterable", "ES2022"],
 		"paths": {
 			"@models": ["models/index.ts"],
 			"@capabilities": ["capabilities/index.ts"],

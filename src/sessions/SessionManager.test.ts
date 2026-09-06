@@ -1,5 +1,6 @@
-import { context } from '@global';
-import { Session, SessionManager } from '@sessions';
+import { context } from '../../packages/mcp-server/src/host';
+import Session from '../../packages/mcp-server/src/sessions/Session';
+import { SessionManager } from '../../packages/mcp-server/src/sessions/SessionManager';
 import {
 	close,
 	createMockSession,
@@ -13,7 +14,7 @@ import * as assert from 'assert';
 import { createServer, type Server } from 'http';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import SessionProfile from './SessionProfile';
+import SessionProfile from '../../packages/mcp-server/src/sessions/SessionProfile';
 
 const { suite, test, setup, teardown } = Mocha;
 

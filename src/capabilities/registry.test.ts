@@ -1,4 +1,4 @@
-import { SessionManager } from '@sessions';
+import { SessionManager } from '../../packages/mcp-server/src/sessions';
 import { initTestEnvironment } from '@test';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -87,7 +87,7 @@ suite('Unit: capability registry', () => {
 	test('tool output bounding is centralized at the MCP/Buddy boundary, not identity formatters', () => {
 		const workflowTypes = readFileSync(join(process.cwd(), 'src/workflow/types.ts'), 'utf8');
 		const graphqlTool = readFileSync(join(process.cwd(), 'src/ui/chat/tools/graphqlTool.ts'), 'utf8');
-		const mcpActions = readFileSync(join(process.cwd(), 'src/mcp/McpActions.ts'), 'utf8');
+		const mcpActions = readFileSync(join(process.cwd(), 'packages/mcp-server/src/mcp/McpActions.ts'), 'utf8');
 
 		assert.doesNotMatch(workflowTypes, /function formatWorkflowOutput/);
 		assert.doesNotMatch(graphqlTool, /function formatResultText/);

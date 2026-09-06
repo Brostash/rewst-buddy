@@ -1,4 +1,4 @@
-import { Session, SessionProfile, getSdk } from '@sessions';
+import { Session, SessionProfile, getSdk } from '../../../packages/mcp-server/src/sessions';
 import { GraphQLClient } from 'graphql-request';
 import { MockWrapper, createMockWrapper, MockWrapperConfig } from './mockWrapper';
 import { Fixtures } from './fixtures';
