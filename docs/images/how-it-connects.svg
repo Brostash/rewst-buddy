@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="470" viewBox="0 0 1200 470" role="img" aria-labelledby="title desc">
+  <title id="title">How Rewst Buddy connects</title>
+  <desc id="desc">AI clients connect to a local MCP server over stdio or HTTP. Chrome hands the server a Rewst session. An optional VS Code companion adds editing and approval dialogs. The server connects to Rewst.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#102a32"/><stop offset="1" stop-color="#111827"/></linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="#7dd3c8" stroke-width="1.5"/></marker>
+  </defs>
+  <rect width="1200" height="470" rx="20" fill="url(#bg)"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="42" y="47" fill="#7dd3c8" font-size="13" font-weight="700" letter-spacing="2">REWST BUDDY / CONNECTION GUIDE</text>
+    <text x="42" y="89" fill="#f8fafc" font-size="30" font-weight="700">One local server. Your choice of assistant.</text>
+    <rect x="32" y="115" width="852" height="318" rx="16" fill="none" stroke="#416069" stroke-dasharray="5 7"/>
+    <text x="50" y="141" fill="#a9bdc9" font-size="12" letter-spacing="1.5">ON YOUR COMPUTER</text>
+    <rect x="52" y="170" width="257" height="109" rx="12" fill="#203943" stroke="#47616a"/>
+    <text x="72" y="200" fill="#f8fafc" font-size="20" font-weight="700">Your AI client</text>
+    <text x="72" y="229" fill="#c4d6de" font-size="15">Codex · Claude Code · Cursor</text>
+    <text x="72" y="253" fill="#c4d6de" font-size="15">VS Code · other MCP clients</text>
+    <path d="M319 224H436" stroke="#7dd3c8" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="329" y="207" fill="#a7e9df" font-size="13">stdio / HTTP</text>
+    <rect x="450" y="170" width="291" height="109" rx="12" fill="#164e49" stroke="#76d7bd"/>
+    <text x="471" y="201" fill="#fff" font-size="22" font-weight="700">Rewst Buddy MCP</text>
+    <text x="471" y="229" fill="#d1f4e8" font-size="15">Sessions · scope · permissions</text>
+    <text x="471" y="253" fill="#a7e9df" font-size="14">127.0.0.1:27121</text>
+    <path d="M752 224H938" stroke="#7dd3c8" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="790" y="207" fill="#a7e9df" font-size="13">Rewst API</text>
+    <rect x="952" y="170" width="200" height="109" rx="12" fill="#273541" stroke="#627280"/>
+    <text x="973" y="204" fill="#f8fafc" font-size="24" font-weight="700">Rewst</text>
+    <text x="973" y="233" fill="#c4d6de" font-size="15">Your organizations</text>
+    <text x="973" y="256" fill="#c4d6de" font-size="15">Your permissions</text>
+    <rect x="52" y="337" width="257" height="73" rx="12" fill="#203943" stroke="#47616a"/>
+    <text x="72" y="365" fill="#f8fafc" font-size="18" font-weight="700">Chrome companion</text>
+    <text x="72" y="390" fill="#c4d6de" font-size="14">Reload Rewst to send a session</text>
+    <path d="M319 373H377V299H509V285" fill="none" stroke="#7dd3c8" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="555" y="337" width="307" height="73" rx="12" fill="#28333d" stroke="#65727e"/>
+    <text x="575" y="365" fill="#f8fafc" font-size="18" font-weight="700">VS Code companion</text>
+    <text x="575" y="390" fill="#c4d6de" font-size="14">Optional: editing + approval dialogs</text>
+    <path d="M663 328V285" stroke="#bac8d1" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#arrow)"/>
+    <text x="952" y="329" fill="#a9bdc9" font-size="14">Read tools by default.</text>
+    <text x="952" y="352" fill="#a9bdc9" font-size="14">Writes are opt-in.</text>
+  </g>
+</svg>

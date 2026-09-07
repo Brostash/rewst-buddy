@@ -5,6 +5,8 @@ Rewst sessions, token refresh, working scope, GraphQL access, and subscriptions.
 It runs without VS Code; the Rewst Buddy VS Code extension adds editor UI,
 linked files, and sync-on-save by connecting to the same server.
 
+For an illustrated first run, see the [project setup guide](https://github.com/totallynotjon/rewst-buddy/blob/main/docs/mcp-setup.md) and [Chrome walkthrough](https://github.com/totallynotjon/rewst-buddy/blob/main/docs/browser-extension.md).
+
 ## Requirements
 
 - Node.js 22 or newer
@@ -14,7 +16,7 @@ linked files, and sync-on-save by connecting to the same server.
 
 ## Quick start with stdio
 
-After the package is published, add this command to your MCP client:
+Add this command to your MCP client:
 
 ```sh
 npx --yes rewst-buddy-mcp@latest
