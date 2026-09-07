@@ -17,13 +17,13 @@ _Connection diagram, not an application screenshot. VS Code is optional; the MCP
 Install **Node.js 22+**, then let your MCP client launch:
 
 ```sh
-npx --yes rewst-buddy-mcp@0.1.0
+npx --yes rewst-buddy-mcp@latest
 ```
 
 For example, with **Codex**:
 
 ```sh
-codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@0.1.0
+codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@latest
 ```
 
 | Your client                        | Copy the setup                                                           |
@@ -35,7 +35,7 @@ codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@0.1.0
 | Another client                     | [Stdio launch settings](docs/mcp-setup.md#other-local-mcp-clients)       |
 | Several clients sharing one server | [Persistent local HTTP](docs/mcp-setup.md#persistent-http-server)        |
 
-With stdio, your client starts the server for you. Examples pin the published `0.1.0` release; use `@latest` if you prefer to follow releases.
+With stdio, your client starts the server for you. Examples use `@latest` so new setups follow the current published release.
 
 ### 2 · Bring your Rewst session
 
@@ -69,7 +69,7 @@ _Acme is an example organization. Use your own organization and workflow names._
 Read tools are available by default. Typed writes require an organization scope and an explicit write policy. To run with standing approval for typed writes in one organization:
 
 ```sh
-npx --yes rewst-buddy-mcp@0.1.0 --org YOUR_ORG_ID --allow-writes --approve-writes
+npx --yes rewst-buddy-mcp@latest --org YOUR_ORG_ID --allow-writes --approve-writes
 ```
 
 Stop the existing owner before changing its startup policy. For client-managed stdio, append the flags to its launch arguments. **Raw GraphQL mutations still require an attached VS Code window to approve each call.**

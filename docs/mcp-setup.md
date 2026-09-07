@@ -34,7 +34,7 @@ You need **Node.js 22 or newer**, access to Rewst, and an MCP client that suppor
 1. Add Rewst Buddy to your client using one of the configurations below. The launch command is:
 
     ```sh
-    npx --yes rewst-buddy-mcp@0.1.0
+    npx --yes rewst-buddy-mcp@latest
     ```
 
 2. Start or enable the server in your client's MCP settings. With stdio, the client launches the process for you; you do not need a separate terminal server.
@@ -43,7 +43,7 @@ You need **Node.js 22 or newer**, access to Rewst, and an MCP client that suppor
 
 The server starts with read tools enabled and write tools disabled. It can list tools before login, but requests for Rewst data need an active session. If you do not use the browser extension, supply a session through the environment or encrypted login as described below.
 
-Examples pin version `0.1.0` for consistent startup. Replace it with a newer published version when upgrading, or use `@latest` to follow releases.
+Examples use `@latest` so new setups follow the current published release. If you need reproducible startup, replace `@latest` with an exact version deliberately. Restart the server to pick up a new release; an already-running owner keeps its current version.
 
 ## Client configuration
 
@@ -54,7 +54,7 @@ Choose one configuration for your client. Merge it into any existing configurati
 Register the server from a terminal:
 
 ```sh
-codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@0.1.0
+codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@latest
 codex mcp list
 ```
 
@@ -63,7 +63,7 @@ Or add this entry to `~/.codex/config.toml`:
 ```toml
 [mcp_servers.rewst-buddy]
 command = "npx"
-args = ["--yes", "rewst-buddy-mcp@0.1.0"]
+args = ["--yes", "rewst-buddy-mcp@latest"]
 ```
 
 Use `/mcp` in the CLI to inspect the connection. See the [official OpenAI MCP guide](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) for configuration locations and desktop/IDE setup. This configures a local server; it does not expose the server to a cloud client.
@@ -73,7 +73,7 @@ Use `/mcp` in the CLI to inspect the connection. See the [official OpenAI MCP gu
 Register it for your user account, across projects:
 
 ```sh
-claude mcp add --transport stdio --scope user rewst-buddy -- npx --yes rewst-buddy-mcp@0.1.0
+claude mcp add --transport stdio --scope user rewst-buddy -- npx --yes rewst-buddy-mcp@latest
 claude mcp list
 ```
 
@@ -89,7 +89,7 @@ Add this to `~/.cursor/mcp.json` for all projects, or `.cursor/mcp.json` for one
 		"rewst-buddy": {
 			"type": "stdio",
 			"command": "npx",
-			"args": ["--yes", "rewst-buddy-mcp@0.1.0"]
+			"args": ["--yes", "rewst-buddy-mcp@latest"]
 		}
 	}
 }
@@ -107,7 +107,7 @@ To launch the standalone server from VS Code, add `.vscode/mcp.json` to your wor
 		"rewst-buddy": {
 			"type": "stdio",
 			"command": "npx",
-			"args": ["--yes", "rewst-buddy-mcp@0.1.0"]
+			"args": ["--yes", "rewst-buddy-mcp@latest"]
 		}
 	}
 }
@@ -120,7 +120,7 @@ Start the server from that file or **MCP: List Servers**, then enable its tools 
 Choose **stdio**, set the command to `npx`, and supply these as separate arguments:
 
 ```json
-["--yes", "rewst-buddy-mcp@0.1.0"]
+["--yes", "rewst-buddy-mcp@latest"]
 ```
 
 Clients using an `mcpServers` JSON object can use the Cursor example as a starting point; check the client's accepted fields. Session handoff works independently of which MCP client launches the server.
@@ -155,7 +155,7 @@ Standalone credentials are **in memory by default**. To persist them, set `REWST
 Alternatively, with that passphrase set, run:
 
 ```sh
-npx --yes rewst-buddy-mcp@0.1.0 login --stdin
+npx --yes rewst-buddy-mcp@latest login --stdin
 ```
 
 Supply the cookie on standard input and end the input stream. Run this before starting the server, or stop and restart the owner afterward so it loads the saved credentials.
@@ -197,7 +197,7 @@ Working scope is shared and persisted by the server. Inspect it with `buddy_get_
 Writes require an effective organization scope and the owner's write policy. To allow typed write tools without VS Code approval dialogs, stop the existing owner and launch it with:
 
 ```sh
-npx --yes rewst-buddy-mcp@0.1.0 --org YOUR_ORG_ID --allow-writes --approve-writes
+npx --yes rewst-buddy-mcp@latest --org YOUR_ORG_ID --allow-writes --approve-writes
 ```
 
 For a client-managed stdio server, append those flags to its `args` array instead. Replace `YOUR_ORG_ID` with an ID returned by `buddy_list_orgs`.
@@ -217,7 +217,7 @@ For a first write, ask the assistant to inspect the target, describe the propose
 Use this when the server should outlive an individual client. First set **`REWST_BUDDY_MCP_TOKEN`** to a random secret in the server environment, then start:
 
 ```sh
-npx --yes rewst-buddy-mcp@0.1.0 --transport http --port 27121
+npx --yes rewst-buddy-mcp@latest --transport http --port 27121
 ```
 
 Leave the process running. Connect your client using **Streamable HTTP**:
@@ -270,7 +270,7 @@ See the [editor quick start](quickstart.md), [features](features.md), and [setti
 ## Operating systems and remote environments
 
 - **macOS and Linux:** the examples use `npx` from your PATH. If a desktop client cannot find it, configure an absolute executable path or use the local-build option below with an absolute Node.js path.
-- **Windows:** install Node.js 22+ on Windows when the client runs there. If the client cannot launch `npx` directly, use `command: "cmd"` with arguments `["/c", "npx", "--yes", "rewst-buddy-mcp@0.1.0"]`. JSON paths need escaped backslashes or forward slashes.
+- **Windows:** install Node.js 22+ on Windows when the client runs there. If the client cannot launch `npx` directly, use `command: "cmd"` with arguments `["/c", "npx", "--yes", "rewst-buddy-mcp@latest"]`. JSON paths need escaped backslashes or forward slashes.
 - **WSL, SSH, and containers:** the command runs in the client's execution environment. Install Node.js there and supply `REWST_SESSION_COOKIE` or an encrypted login there. A browser on another host or network namespace cannot be assumed to reach that environment's loopback address. Keep Chrome and the owner in the same local environment for the simplest session handoff.
 - **Remote or cloud HTTP clients:** this server binds only to loopback and rejects forwarded requests, unknown Host headers, and non-loopback browser origins. It is not a public/LAN endpoint; publishing or forwarding port 27121 is not a supported remote deployment recipe.
 
@@ -289,7 +289,7 @@ See the [editor quick start](quickstart.md), [features](features.md), and [setti
 | Write or scope request denied                          | Check owner policy and organization/workflow scope. Attach VS Code for approval, or configure the standalone typed-write allowlist and approval flags. |
 | Template-opening action fails                          | Attach a compatible Rewst Buddy VS Code window. Session transfer alone does not open an editor.                                                        |
 
-Logs go to standard error; standard output is reserved for MCP messages. Use your client's MCP logs to diagnose startup failures. Run `npx --yes rewst-buddy-mcp@0.1.0 --help` for all launch options.
+Logs go to standard error; standard output is reserved for MCP messages. Use your client's MCP logs to diagnose startup failures. Run `npx --yes rewst-buddy-mcp@latest --help` for all launch options.
 
 ## Build from source
 
