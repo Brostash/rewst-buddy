@@ -22,7 +22,7 @@ _This is the folder's content on GitHub. In the local folder picker, select the 
 
 The screenshots show the real download pages. The browser's internal extension-management page is not pictured.
 
-**Checkpoint:** Chrome's Extensions page should show a Rewst Buddy entry enabled. Keep the unpacked directory in place so Chrome can continue loading it.
+**Checkpoint:** Your browser's extensions page should show a Rewst Buddy entry enabled. Keep the unpacked directory in place so the browser can continue loading it.
 
 For Firefox, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on**, and select `build-firefox/manifest.json`. This is a temporary installation; see the [browser repository](https://github.com/totallynotjon/rewst-buddy-browser#installation).
 

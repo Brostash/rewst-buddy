@@ -21,11 +21,4 @@
 - [Editor settings and commands](reference.md): VS Code configuration and regional settings.
 - [Editor features](features.md): sync, Jinja tooling, template bundles, and more.
 
-## Contributing
-
-- [Build and test the server](mcp-setup.md#build-from-source)
-- [Server and extension architecture](dev/standalone-mcp.md)
-- [Release process](dev/releasing.md)
-- [GraphQL field guide](dev/graphql-field-guide.md)
-
 [← Project README](../README.md)

@@ -112,6 +112,13 @@ docs/
 - Relative links (`docs/features.md`, `#anchor`) resolve on both GitHub and the VS Code Marketplace — prefer them over absolute URLs.
 - When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and add a changelog note (see **Changelog & Releases**).
 
+## MCP contributor resources
+
+- [Build the standalone server](docs/mcp-setup.md#build-from-source); run `npm run test:mcp` for its headless tests.
+- [Server and extension architecture](docs/dev/standalone-mcp.md) documents package boundaries and shared-runtime ownership.
+- [Release process](docs/dev/releasing.md) covers publishing the extension and standalone package.
+- [GraphQL field guide](docs/dev/graphql-field-guide.md) covers API implementation details.
+
 ## Pull Request Conventions
 
 - **Always open PRs as drafts** (`gh pr create --draft`). The maintainer flips a draft to "ready for review" — that transition is what triggers the CodeRabbit review, so opening ready-for-review PRs directly costs review runs. Never mark a PR ready yourself.

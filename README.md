@@ -84,7 +84,7 @@ The [VS Code companion](https://marketplace.visualstudio.com/items?itemName=JBra
 
 _Optional editor companion. [Set it up →](docs/quickstart.md)_
 
-The first compatible process owns sessions, storage, and policy. Other clients reuse it. Start a persistent server first if you want sessions to remain available after closing an assistant or editor.
+Start a [persistent server](docs/mcp-setup.md#persistent-http-server) if you want sessions to remain available after closing an assistant or editor.
 
 ## Pick your next step
 

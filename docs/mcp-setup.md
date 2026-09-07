@@ -303,7 +303,7 @@ node packages/mcp-server/dist/cli.cjs --help
 
 In your client configuration, replace `npx` with `node` and the package arguments with the **absolute path** to `packages/mcp-server/dist/cli.cjs`. Append server flags after that path. This uses your local build instead of the published package.
 
-The [MCP package guide](../packages/mcp-server/README.md) covers storage, configuration, and embedding in more detail. Contributors can also read the [server architecture](dev/standalone-mcp.md) and run `npm run test:mcp`.
+The [MCP package guide](../packages/mcp-server/README.md) covers storage and configuration in more detail.
 
 ## Support and license
 
