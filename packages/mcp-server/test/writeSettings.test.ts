@@ -20,6 +20,18 @@ describe('runtime write settings validation', () => {
 		}
 		expect(invalidate).not.toHaveBeenCalled();
 	});
+	it('preserves revision, approvals and notifications for equivalent updates', () => {
+		const invalidate = vi.fn();
+		const settings = new RuntimeWriteSettings({ ...initial, orgs: ['a', 'b'] }, invalidate);
+		const changed = vi.fn();
+		settings.onChanged(changed);
+		for (const input of [{}, { allowWrites: false }, { orgs: [' b ', 'a', 'b'] }, settings.get()]) {
+			expect(settings.update(input)).toEqual({ ...initial, orgs: ['a', 'b'] });
+		}
+		expect(settings.revision).toBe(0);
+		expect(invalidate).not.toHaveBeenCalled();
+		expect(changed).not.toHaveBeenCalled();
+	});
 	it('replaces orgs, preserves omitted settings, and protects snapshots from mutation', () => {
 		const settings = new RuntimeWriteSettings(initial, vi.fn());
 		settings.update({ orgs: [' a ', 'a'], allowWrites: true, approveWrites: true });

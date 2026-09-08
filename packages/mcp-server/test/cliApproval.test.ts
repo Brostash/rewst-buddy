@@ -40,9 +40,11 @@ describe('CLI mutation approval through MCP', () => {
 	let stdin: PassThrough | undefined;
 	let client: Client | undefined;
 	let server: ReturnType<typeof createMcpServer> | undefined;
-	const rawGraphql = vi.fn(async (_query: string, _variables?: Record<string, unknown>) => ({
-		data: { template: { id: 'new-template', orgId: 'org-b' } },
-	}));
+	const rawGraphql = vi.fn(
+		async (_query: string, _variables?: Record<string, unknown>): Promise<Record<string, unknown>> => ({
+			data: { template: { id: 'new-template', orgId: 'org-b' } },
+		}),
+	);
 	const createTemplate = vi.fn(async () => ({ template: { id: 'typed-template', name: 'Safe' } }));
 
 	beforeEach(() => {
@@ -209,6 +211,45 @@ describe('CLI mutation approval through MCP', () => {
 		expect(WorkingScopeManager.getOrgs()).toEqual(['org-a']);
 		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({ code: 'rate_limited' });
 	});
+
+	it('keeps pinned scope when a client resends unchanged settings', async () => {
+		const agent = await start();
+		WorkingScopeManager.applyChange({ orgs: ['org-a'], workflows: ['wf'] }, [{ id: 'wf', name: 'Pinned' }]);
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: {} });
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-a'], approveWrites: true } });
+		expect(WorkingScopeManager.snapshot()).toEqual({ orgs: ['org-a'], workflows: ['wf'] });
+		expect(WorkingScopeManager.workflowNames.get('wf')).toBe('Pinned');
+	});
+
+	it.each([{ orgs: ['org-a'], workflows: ['wf'] }, { workflows: ['wf', 'wf2'] }])(
+		'invalidates earlier approvals in a multi-item scope transaction: %j',
+		async arguments_ => {
+			const agent = await start(false);
+			rawGraphql.mockImplementationOnce(async () => ({
+				data: { workflow: { id: 'wf', name: 'Workflow', orgId: 'org-a' } },
+			}));
+			if (arguments_.workflows.length === 2)
+				rawGraphql.mockImplementationOnce(async () => ({
+					data: { workflow: { id: 'wf2', name: 'Second', orgId: 'org-a' } },
+				}));
+			let approve!: (value: boolean) => void;
+			vi.mocked(requestAttachedEditor)
+				.mockResolvedValueOnce(true)
+				.mockImplementationOnce(
+					() =>
+						new Promise<boolean>(resolve => {
+							approve = resolve;
+						}),
+				);
+			const pending = agent.callTool({ name: 'buddy_set_working_scope', arguments: arguments_ });
+			await vi.waitFor(() => expect(requestAttachedEditor).toHaveBeenCalledTimes(2));
+			await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-b'] } });
+			approve(true);
+			expect((await pending).structuredContent).toMatchObject({ result: { status: 'denied' } });
+			expect(WorkingScopeManager.snapshot()).toEqual({ orgs: [], workflows: [] });
+			expect(WorkingScopeManager.workflowNames.size).toBe(0);
+		},
+	);
 
 	it('clears named workflow metadata with the pinned scope', async () => {
 		const agent = await start();

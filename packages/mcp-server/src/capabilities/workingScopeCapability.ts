@@ -189,6 +189,8 @@ async function resolveWorkflowNames(ids: string[], sessions: Session[]): Promise
 }
 
 async function runSetWorkingScope(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const policy = getRuntimeWriteSettings();
+	const revision = policy?.revision;
 	const replace = input.replace === true;
 	const orgIds = toIdArray(input.orgs);
 	const workflowIds = toIdArray(input.workflows);
@@ -241,6 +243,12 @@ async function runSetWorkingScope(input: Record<string, unknown>, ctx: Capabilit
 	const everythingApproved = deniedOrgIds.length === 0 && deniedWorkflowIds.length === 0;
 
 	if (nothingApproved) {
+		return JSON.stringify({ status: 'denied' }, null, 2);
+	}
+
+	// All approvals belong to one transaction, including items approved before
+	// a later prompt or workflow lookup yielded to a policy change.
+	if (getRuntimeWriteSettings() !== policy || policy?.revision !== revision) {
 		return JSON.stringify({ status: 'denied' }, null, 2);
 	}
 

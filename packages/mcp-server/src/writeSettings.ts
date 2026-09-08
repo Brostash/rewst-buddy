@@ -54,6 +54,16 @@ export class RuntimeWriteSettings {
 			throw new Error('Write settings require at least one org.');
 		if ((next.approveWrites || next.allowGraphqlMutations) && !next.allowWrites)
 			throw new Error('approveWrites and allowGraphqlMutations require allowWrites.');
+		const currentOrgs = new Set(this.value.orgs);
+		if (
+			next.allowWrites === this.value.allowWrites &&
+			next.approveWrites === this.value.approveWrites &&
+			next.allowGraphqlMutations === this.value.allowGraphqlMutations &&
+			next.orgs.length === currentOrgs.size &&
+			next.orgs.every(org => currentOrgs.has(org))
+		) {
+			return this.get();
+		}
 		this.generation++;
 		this.invalidateApprovals();
 		this.value = next;
