@@ -1,3 +1,4 @@
+import { getRuntimeWriteSettings } from '../host';
 import {
 	CAPABILITY_REGISTRY,
 	formatMcpOutput,
@@ -207,6 +208,26 @@ function logCallToolAudit(tool: string, orgId: string, outcome: AuditOutcome, st
 	log.info(`[MCP audit] tool=${safeTool} orgId=${safeOrgId} outcome=${outcome} durationMs=${Date.now() - startedAt}`);
 }
 
+/** Run a standalone runtime-control tool through the same MCP throttle/audit path. */
+export async function callRuntimeWriteTool(name: string, run: () => Promise<unknown>): Promise<unknown> {
+	const startedAt = Date.now();
+	let auditOutcome: AuditOutcome = 'ok';
+	try {
+		if (!THROTTLE.tryAcquire()) {
+			throw new McpError(
+				'rate_limited',
+				`Too many MCP calls; slow down and retry in ~${Math.ceil(THROTTLE.retryAfterMs() / 1000)}s.`,
+			);
+		}
+		return await run();
+	} catch (error) {
+		auditOutcome = `error:${error instanceof McpError ? error.code : 'internal'}`;
+		throw error;
+	} finally {
+		logCallToolAudit(name, '—', auditOutcome, startedAt);
+	}
+}
+
 /** Validates the session, attempting one refresh, before a capability runs. */
 async function ensureValidSession(session: Session): Promise<void> {
 	if (await session.validate()) return;
@@ -355,6 +376,8 @@ export async function callTool(
 	let auditOrgId = '—';
 	let auditOutcome: AuditOutcome = 'ok';
 	try {
+		const policy = getRuntimeWriteSettings();
+		const revision = policy?.revision;
 		const capability = getCapability(params.name);
 		if (!capability) {
 			throw new McpError('unknown_tool', `Unknown tool "${params.name}".`);
@@ -399,6 +422,12 @@ export async function callTool(
 		// purely local discovery/cache capabilities remain session-check-free.
 		if (capability.requiresOrg !== false || capability.scopedSessions) {
 			await ensureValidSession(ctx.session);
+		}
+		if (capability.access === 'write' && (getRuntimeWriteSettings() !== policy || policy?.revision !== revision)) {
+			throw new McpError(
+				'write_disabled',
+				'Write policy changed while preparing this call. Retry under the current settings.',
+			);
 		}
 		try {
 			// Tag the in-flight call with its origin so the deep approval modal can

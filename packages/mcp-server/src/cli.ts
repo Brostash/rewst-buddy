@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { openCredentialStorage } from './credentialStorage';
+import { RuntimeWriteSettings } from './writeSettings';
+import { WorkingScopeManager } from './models/WorkingScopeManager';
+import { _resetApprovedMutationScopes } from './tools/graphqlTool';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
@@ -61,8 +64,8 @@ Options:
   --port PORT             HTTP port (default: ${DEFAULT_PORT})
   --org ORG[,ORG...]      Organization allowed for writes (repeatable)
   --allow-writes          Expose write tools
-  --approve-writes        Approve typed write scopes in this host
-  --allow-graphql-mutations  Expose raw GraphQL mutation (requires editor approval)
+  --approve-writes        Delegate enabled write approvals to the MCP client
+  --allow-graphql-mutations  Expose raw GraphQL mutation tools
   --state-dir PATH        Directory for session metadata and credentials
   --config PATH           JSON file containing validated region settings
   --discovery-dir PATH    Directory for the shared server descriptor
@@ -543,14 +546,19 @@ export async function runCli(
 		const secretValues = [process.env.REWST_BUDDY_MCP_TOKEN, passphrase, process.env.REWST_SESSION_COOKIE].filter(
 			(value): value is string => !!value,
 		);
+		const writeSettings = new RuntimeWriteSettings(options, () => {
+			_resetApprovedMutationScopes();
+			WorkingScopeManager.clear();
+		});
 		host = {
+			writeSettings,
 			state,
 			secrets,
 			getSetting<T>(key: string, fallback: T): T {
 				if (key === 'regions' && config.regions) return config.regions as T;
-				if (key === 'mcp.alwaysAllowedOrgs') return options.orgs as T;
-				if (key === 'mcp.enableWriteTools') return options.allowWrites as T;
-				if (key === 'mcp.enableDangerousGraphqlMutation') return options.allowGraphqlMutations as T;
+				if (key === 'mcp.alwaysAllowedOrgs') return writeSettings.get().orgs as T;
+				if (key === 'mcp.enableWriteTools') return writeSettings.get().allowWrites as T;
+				if (key === 'mcp.enableDangerousGraphqlMutation') return writeSettings.get().allowGraphqlMutations as T;
 				if (key === 'mcp.enable') return true as T;
 				return fallback;
 			},
@@ -576,9 +584,13 @@ export async function runCli(
 		configureRuntimeHost(host);
 		const { setMcpMutationApprover, setMcpScopedMutationApprover, setWorkingScopeApprover } =
 			await import('./capabilities/index');
-		// Arbitrary documents have no verified relationship to scope.orgId. Even
-		// with standing typed-write approval, show each document to the editor.
+		// Automatic approval delegates the per-call decision to the MCP client.
+		// Raw documents can target data outside their declared org scope.
 		setMcpMutationApprover(async (scope, operation, origin) => {
+			const current = writeSettings.get();
+			if (!current.allowWrites || !current.allowGraphqlMutations) return false;
+			if (!current.orgs.includes(scope.orgId) && !WorkingScopeManager.hasOrg(scope.orgId)) return false;
+			if (current.approveWrites) return current.orgs.includes(scope.orgId);
 			try {
 				const result = await requestAttachedEditor('approval.mutation', { scope, operation, origin });
 				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
@@ -586,21 +598,28 @@ export async function runCli(
 				return false;
 			}
 		});
-		if (options.approveWrites) {
-			const allowedOrgs = new Set(options.orgs);
-			setMcpScopedMutationApprover(async scope => allowedOrgs.has(scope.orgId));
-			setWorkingScopeApprover(async request => isAllowedScopeChange(request, allowedOrgs));
-		} else {
-			setMcpScopedMutationApprover(undefined);
-			setWorkingScopeApprover(async (request, origin) => {
-				try {
-					const result = await requestAttachedEditor('approval.scope', { request, origin });
-					return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
-				} catch {
-					return false;
-				}
-			});
-		}
+		setMcpScopedMutationApprover(async (scope, operation, origin) => {
+			const current = writeSettings.get();
+			if (!current.allowWrites) return false;
+			if (!current.orgs.includes(scope.orgId) && !WorkingScopeManager.hasOrg(scope.orgId)) return false;
+			if (current.approveWrites) return current.orgs.includes(scope.orgId);
+			try {
+				const result = await requestAttachedEditor('approval.mutation', { scope, operation, origin });
+				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
+			} catch {
+				return false;
+			}
+		});
+		setWorkingScopeApprover(async (request, origin) => {
+			const current = writeSettings.get();
+			if (current.approveWrites) return isAllowedScopeChange(request, current.orgs);
+			try {
+				const result = await requestAttachedEditor('approval.scope', { request, origin });
+				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
+			} catch {
+				return false;
+			}
+		});
 		await startRuntime(host);
 		ready.resolve();
 

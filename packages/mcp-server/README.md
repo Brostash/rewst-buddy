@@ -205,24 +205,46 @@ npx --yes rewst-buddy-mcp@latest \
 	--approve-writes
 ```
 
-`--org` is repeatable and also accepts comma-separated IDs. It is the owner's
-standing allowlist; a tool-requested scope change cannot expand it.
-`--approve-writes` allows typed writes within that allowlist without an editor
-prompt. Existing resource membership and workflow scope checks still apply.
+`--org` is repeatable and also accepts comma-separated IDs. It initializes the
+owner's standing allowlist. `--approve-writes` skips Buddy's approval prompts
+for all enabled write tools, including workflow run/edit and raw GraphQL.
+The AI client is responsible for enforcing tool-call permissions; configure its
+approval policy accordingly. Buddy cannot guarantee a client confirmation.
 
-If you omit `--approve-writes`, typed writes and working-scope changes require
-approval from an attached VS Code window. They are denied when no editor is
-attached.
+You can also configure a running standalone owner without restarting it, even
+when it was launched with no write flags. Call `buddy_get_write_settings` to
+inspect the current policy, then `buddy_set_write_settings` with, for example:
 
-Arbitrary GraphQL mutation is deliberately stricter. It requires all of:
+```json
+{
+  "orgs": ["YOUR_ORG_ID"],
+  "allowWrites": true,
+  "approveWrites": true,
+  "allowGraphqlMutations": false
+}
+```
 
-- `--org ORG_ID`
-- `--allow-writes`
-- `--allow-graphql-mutations`
-- approval of the exact query and variables by an attached VS Code window
+These tools are available before signing in. Only request changes authorized by
+the user. Changes affect **all clients connected to that owner** until restart;
+they do not modify launch flags or VS Code settings. Omitted fields are unchanged,
+and `orgs` replaces the allowlist. A settings change clears remembered approvals
+and pinned working scope and invalidates pending approval requests. It cannot
+undo writes already sent to Rewst. Clients receive a tool-list change notification; refresh
+`tools/list` if your client does not automatically discover the newly enabled tools.
 
-Each `buddy_graphql_mutate` call is approved separately, even when
-`--approve-writes` is set. Without an attached editor, raw mutations are denied.
+To disable all writes, set `allowWrites`, `approveWrites`, and
+`allowGraphqlMutations` to `false` in one call. Enabling writes requires a nonempty
+`orgs` list. Automatic approval and raw mutations also require `allowWrites`.
+Invalid updates leave the current settings unchanged.
+
+Typed tools retain their resource membership and workflow scope checks. Raw
+GraphQL additionally requires `allowGraphqlMutations: true` (or the launch flag
+`--allow-graphql-mutations`). Raw documents can affect organizations outside the
+declared scope: the declared org is not a sandbox for arbitrary GraphQL.
+
+With `approveWrites: false`, writes and working-scope changes use attached-editor
+approval and are denied headlessly. With it enabled, working-scope changes must
+stay inside the configured allowlist and no per-write Buddy prompt appears.
 The MCP server does not expose arbitrary shell-command execution.
 
 ## Sharing with VS Code
@@ -290,9 +312,9 @@ object containing a non-empty `regions` array:
   hosts can use `REWST_BUDDY_PASSPHRASE` with a separate state directory.
 - **Session storage is in use**: stop the owner or login process using that
   directory before retrying.
-- **Write or scope request denied**: attach VS Code to approve it, or restart the
-  owner with the appropriate `--org`, `--allow-writes`, and typed-write approval
-  flags. Raw GraphQL mutations always need an attached editor.
+- **Write or scope request denied**: inspect `buddy_get_write_settings` and use
+  `buddy_set_write_settings` to configure the authorized orgs and write policy,
+  or attach VS Code for editor approval.
 - **Browser handoff fails**: confirm the server is listening on the browser
   extension's configured loopback port and that you are signed in to the matching
   Rewst region.
