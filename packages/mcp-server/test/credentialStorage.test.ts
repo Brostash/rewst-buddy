@@ -2,6 +2,7 @@ import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import lockfile from 'proper-lockfile';
 import { openCredentialStorage, type VaultKey } from '../src/credentialStorage';
 
 const directories: string[] = [];
@@ -128,4 +129,14 @@ describe('default secure credential persistence', () => {
 		await close(first);
 		expect(await (await open(dir, factory)).secrets.get('user')).toBe('cookie');
 	});
+});
+
+it('preserves filesystem lock errors instead of reporting contention', async () => {
+	const error = Object.assign(new Error('permission denied creating lock directory'), { code: 'EACCES' });
+	const lock = vi.spyOn(lockfile, 'lock').mockRejectedValueOnce(error);
+	try {
+		await expect(open(await directory())).rejects.toBe(error);
+	} finally {
+		lock.mockRestore();
+	}
 });

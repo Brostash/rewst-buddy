@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -82,4 +82,21 @@ describe('standalone CLI argument boundary', () => {
 			vi.unstubAllEnvs();
 		}
 	});
+});
+
+it('login reports locked storage as exit code 2 without consuming the cookie', async () => {
+	const { openCredentialStorage } = await import('../src/credentialStorage');
+	const stateDir = mkdtempSync(join(tmpdir(), 'rewst-login-locked-'));
+	const owner = await openCredentialStorage(stateDir, 'synthetic-passphrase');
+	const streams = io();
+	streams.stdin.end('private-cookie');
+	try {
+		expect(await runCli(['login', '--stdin', '--state-dir', stateDir], streams)).toBe(2);
+		expect(streams.stderr.read()?.toString()).toMatch(/Session storage is in use/);
+		expect(streams.stdout.read()).toBeNull();
+		expect(streams.stdin.read()?.toString()).toBe('private-cookie');
+	} finally {
+		await owner.close();
+		rmSync(stateDir, { recursive: true, force: true });
+	}
 });

@@ -348,7 +348,13 @@ async function runLogin(options: ParsedCliOptions, io: CliIo): Promise<number> {
 	const config = readConfig(options.configPath);
 	const stateDir = options.stateDir || defaultStateDir();
 	const passphrase = process.env.REWST_BUDDY_PASSPHRASE;
-	const storage = await openCredentialStorage(stateDir, passphrase);
+	let storage: Awaited<ReturnType<typeof openCredentialStorage>>;
+	try {
+		storage = await openCredentialStorage(stateDir, passphrase);
+	} catch (error) {
+		io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		return 2;
+	}
 	const { state, secrets } = storage;
 	const secretValues = [process.env.REWST_BUDDY_MCP_TOKEN, passphrase].filter((value): value is string => !!value);
 	const host = {

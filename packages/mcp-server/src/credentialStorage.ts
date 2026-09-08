@@ -141,10 +141,12 @@ export async function openCredentialStorage(stateDir: string, passphrase?: strin
 				compromised = true;
 			},
 		});
-	} catch {
-		throw new Error(
-			'Session storage is in use. Stop the other owner or login process, or choose another --state-dir.',
-		);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ELOCKED')
+			throw new Error(
+				'Session storage is in use. Stop the other owner or login process, or choose another --state-dir.',
+			);
+		throw error;
 	}
 	try {
 		const legacyPath = join(directory, 'credentials.enc');

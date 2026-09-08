@@ -75,14 +75,12 @@ headless owner can preapprove typed writes only inside its `--org` allowlist.
 Arbitrary GraphQL documents require the separate mutation switch and an attached
 editor's per-call approval; the standing typed-write approval does not bypass it.
 
-### Standalone credential persistence
+## Standalone credential persistence
 
-The CLI uses `openCredentialStorage` for both server ownership and login. It
-locks the canonical state directory across processes, and opens an existing
-vault before the runtime can restore or modify profiles. Credentials use the
-existing AES-256-GCM implementation. Default vault keys live in the OS store;
-Linux uses `secret-tool` explicitly to avoid ephemeral kernel-keyring fallback.
-macOS and Windows load `@napi-rs/keyring` as an external native dependency.
-The passphrase vault remains available for headless operators. See the
+Standalone logins survive restarts using encrypted credentials protected by the
+OS credential store. Headless hosts can instead supply a passphrase. Stop the
+current owner before running `login --stdin`; browser handoff works while the
+owner is running. An unavailable credential store produces an error rather than
+silently losing the login. See the
 [package authentication guide](../../packages/mcp-server/README.md#encrypted-persistent-login)
-for requirements and recovery. OS-store errors never fall back to memory.
+for platform requirements and recovery.
