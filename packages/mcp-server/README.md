@@ -23,7 +23,7 @@ cached tool name are rejected. MCP clients receive a tool-list change notificati
 Add this command to your MCP client:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest
+npx -y rewst-buddy-mcp@latest
 ```
 
 An illustrative stdio configuration is:
@@ -33,7 +33,7 @@ An illustrative stdio configuration is:
 	"mcpServers": {
 		"rewst-buddy": {
 			"command": "npx",
-			"args": ["--yes", "rewst-buddy-mcp@latest"]
+			"args": ["-y", "rewst-buddy-mcp@latest"]
 		}
 	}
 }
@@ -49,7 +49,7 @@ Codex CLI, the Codex IDE extension, and ChatGPT desktop share the host's local
 MCP configuration. Register the stdio server with:
 
 ```sh
-codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@latest
+codex mcp add rewst-buddy -- npx -y rewst-buddy-mcp@latest
 ```
 
 Restart the desktop client or extension host after changing the configuration,
@@ -98,7 +98,7 @@ launches, including cookies received from the browser extension.
 Pass the cookie on standard input:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest login --stdin
+npx -y rewst-buddy-mcp@latest login --stdin
 ```
 
 Stop the current standalone owner before running login, then start it again.
@@ -152,7 +152,7 @@ Code window. Set a random `REWST_BUDDY_MCP_TOKEN` in both the server process and
 your MCP client's secret settings, then start:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest --transport http --port 27121
+npx -y rewst-buddy-mcp@latest --transport http --port 27121
 ```
 
 Connect the client to `http://127.0.0.1:27121/mcp` with this header:
@@ -205,7 +205,7 @@ scope.
 For typed write tools in explicitly allowed organizations, start the owner with:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest \
+npx -y rewst-buddy-mcp@latest \
 	--org YOUR_ORG_ID \
 	--allow-writes
 ```
@@ -326,7 +326,7 @@ object containing a non-empty `regions` array:
   extension's configured loopback port and that you are signed in to the matching
   Rewst region.
 
-Run `npx --yes rewst-buddy-mcp@latest --help` for the complete CLI option list.
+Run `npx -y rewst-buddy-mcp@latest --help` for the complete CLI option list.
 
 ## Local development and embedding
 
