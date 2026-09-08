@@ -1,3 +1,4 @@
+import { getRuntimeWriteSettings } from './host';
 import { onCapabilityCatalogChanged } from './capabilities/registry';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
@@ -74,7 +75,8 @@ function assertUniqueExtraTools(extraTools: ExtraTool[]): void {
 
 /** Create a low-level SDK server. The caller owns its transport lifecycle. */
 export function createMcpServer(options: McpServerOptions = {}): Server {
-	const extraTools = options.extraTools ?? [];
+	const writeSettings = getRuntimeWriteSettings();
+	const extraTools = [...(writeSettings?.tools() ?? []), ...(options.extraTools ?? [])];
 	assertUniqueExtraTools(extraTools);
 	const extraByName = new Map(extraTools.map(tool => [tool.name, tool]));
 	const server = new Server(SERVER_INFO, {
@@ -82,14 +84,20 @@ export function createMcpServer(options: McpServerOptions = {}): Server {
 		instructions: buildMcpInstructions(),
 	});
 
+	let unsubscribeSettings: (() => void) | undefined;
 	let unsubscribeCatalog: (() => void) | undefined;
 	server.oninitialized = () => {
+		unsubscribeSettings?.();
+		unsubscribeSettings = writeSettings?.onChanged(() => {
+			void server.sendToolListChanged().catch(() => undefined);
+		});
 		unsubscribeCatalog?.();
 		unsubscribeCatalog = onCapabilityCatalogChanged(() => {
 			void server.sendToolListChanged().catch(() => undefined);
 		});
 	};
 	server.onclose = () => {
+		unsubscribeSettings?.();
 		unsubscribeCatalog?.();
 	};
 
