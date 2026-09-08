@@ -21,3 +21,4 @@ export {
 	hasRequestingEditor,
 	broadcastEditorEvent,
 } from './editorBridge';
+export { openCredentialStorage } from './credentialStorage';

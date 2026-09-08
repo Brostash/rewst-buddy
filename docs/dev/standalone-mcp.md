@@ -32,7 +32,7 @@ operations. Optional editor capabilities are installed by the extension and
 pass through the ordinary server policy boundary.
 
 The extension supplies storage, logging, token prompt, and approval UI ports.
-The standalone host supplies local state and optional encrypted credential
+The standalone host supplies local state and default encrypted credential
 storage. Rewst cookies stay behind the server boundary after input. Existing
 profile/secret keys are retained when embedding to preserve saved sessions.
 
@@ -74,3 +74,15 @@ Typed mutations require the owner's write switch and effective org scope. A
 headless owner can preapprove typed writes only inside its `--org` allowlist.
 Arbitrary GraphQL documents require the separate mutation switch and an attached
 editor's per-call approval; the standing typed-write approval does not bypass it.
+
+### Standalone credential persistence
+
+The CLI uses `openCredentialStorage` for both server ownership and login. It
+locks the canonical state directory across processes, and opens an existing
+vault before the runtime can restore or modify profiles. Credentials use the
+existing AES-256-GCM implementation. Default vault keys live in the OS store;
+Linux uses `secret-tool` explicitly to avoid ephemeral kernel-keyring fallback.
+macOS and Windows load `@napi-rs/keyring` as an external native dependency.
+The passphrase vault remains available for headless operators. See the
+[package authentication guide](../../packages/mcp-server/README.md#encrypted-persistent-login)
+for requirements and recovery. OS-store errors never fall back to memory.
