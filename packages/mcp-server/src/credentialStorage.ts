@@ -170,36 +170,43 @@ export async function openCredentialStorage(stateDir: string, passphrase?: strin
 			if (compromised)
 				throw new Error('Session storage lock was lost. Restart the server before changing sessions.');
 		};
+		const pending = new Set<Promise<unknown>>();
+		async function operation<T>(action: () => Promise<T>): Promise<T> {
+			check();
+			const result = action();
+			pending.add(result);
+			try {
+				return await result;
+			} finally {
+				pending.delete(result);
+			}
+		}
+		let closing: Promise<void> | undefined;
 		return {
 			state: {
 				get: state.get.bind(state),
-				update: async (key: string, value: unknown) => {
-					check();
-					await state.update(key, value);
-				},
+				update: (key: string, value: unknown) => operation(() => state.update(key, value)),
 			},
 			secrets: {
-				get: async (key: string) => {
-					check();
-					return secrets.get(key);
-				},
-				store: async (key: string, value: string) => {
-					check();
-					await secrets.store(key, value);
-				},
-				delete: async (key: string) => {
-					check();
-					await secrets.delete(key);
-				},
+				get: (key: string) => operation(() => secrets.get(key)),
+				store: (key: string, value: string) => operation(() => secrets.store(key, value)),
+				delete: (key: string) => operation(() => secrets.delete(key)),
 			},
-			close: async () => {
-				if (closed) return;
+			close: (): Promise<void> => {
+				if (closing) return closing;
 				closed = true;
-				try {
-					await Promise.all([state.flush(), secrets.flush()]);
-				} finally {
-					await release();
-				}
+				closing = (async () => {
+					try {
+						// A save can still be awaiting the OS key before joining the vault's
+						// write queue. Drain accepted operations before flushing either store.
+						await Promise.allSettled(pending);
+						const results = await Promise.allSettled([state.flush(), secrets.flush()]);
+						for (const result of results) if (result.status === 'rejected') throw result.reason;
+					} finally {
+						await release();
+					}
+				})();
+				return closing;
 			},
 		};
 	} catch (error) {

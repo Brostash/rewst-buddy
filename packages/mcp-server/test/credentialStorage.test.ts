@@ -140,3 +140,49 @@ it('preserves filesystem lock errors instead of reporting contention', async () 
 		lock.mockRestore();
 	}
 });
+
+it('keeps the lock until an accepted first credential save finishes during shutdown', async () => {
+	const { EncryptedSecretStore } = await import('../src/storage');
+	const dir = await directory();
+	let unlock!: (value: string) => void;
+	const key = new Promise<string>(resolve => {
+		unlock = resolve;
+	});
+	let finishWrite!: () => void;
+	const writeGate = new Promise<void>(resolve => {
+		finishWrite = resolve;
+	});
+	let writeStarted!: () => void;
+	const started = new Promise<void>(resolve => {
+		writeStarted = resolve;
+	});
+	const originalStore = EncryptedSecretStore.prototype.store;
+	const slowStore = vi
+		.spyOn(EncryptedSecretStore.prototype, 'store')
+		.mockImplementationOnce(async function (name, value) {
+			writeStarted();
+			await writeGate;
+			await originalStore.call(this, name, value);
+		});
+	const factory = () => ({ get: () => key, set: async () => {} });
+	const first = await open(dir, factory);
+	const saving = first.secrets.store('user', 'cookie-during-unlock');
+	const closing = close(first);
+	try {
+		await expect(first.secrets.store('another-user', 'too-late')).rejects.toThrow(/closed/);
+		unlock('synthetic-master-key');
+		await started;
+		const outcome = await Promise.race([
+			closing.then(() => 'closed'),
+			new Promise(resolve => setTimeout(() => resolve('waiting'), 25)),
+		]);
+		expect(outcome).toBe('waiting');
+		await expect(open(dir, factory)).rejects.toThrow(/storage is in use/);
+	} finally {
+		finishWrite();
+		await Promise.all([saving, closing]);
+		slowStore.mockRestore();
+	}
+	const second = await open(dir, factory);
+	expect(await second.secrets.get('user')).toBe('cookie-during-unlock');
+});
