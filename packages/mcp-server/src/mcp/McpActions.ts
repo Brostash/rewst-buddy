@@ -1,3 +1,4 @@
+import { getRuntimeWriteSettings } from '../host';
 import {
 	CAPABILITY_REGISTRY,
 	formatMcpOutput,
@@ -375,6 +376,8 @@ export async function callTool(
 	let auditOrgId = '—';
 	let auditOutcome: AuditOutcome = 'ok';
 	try {
+		const policy = getRuntimeWriteSettings();
+		const revision = policy?.revision;
 		const capability = getCapability(params.name);
 		if (!capability) {
 			throw new McpError('unknown_tool', `Unknown tool "${params.name}".`);
@@ -419,6 +422,12 @@ export async function callTool(
 		// purely local discovery/cache capabilities remain session-check-free.
 		if (capability.requiresOrg !== false || capability.scopedSessions) {
 			await ensureValidSession(ctx.session);
+		}
+		if (capability.access === 'write' && (getRuntimeWriteSettings() !== policy || policy?.revision !== revision)) {
+			throw new McpError(
+				'write_disabled',
+				'Write policy changed while preparing this call. Retry under the current settings.',
+			);
 		}
 		try {
 			// Tag the in-flight call with its origin so the deep approval modal can

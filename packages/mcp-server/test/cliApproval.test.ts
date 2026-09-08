@@ -1,3 +1,7 @@
+import {
+	requestMcpMutationApproval,
+	requestMcpScopedMutationApproval,
+} from '../src/capabilities/graphqlMutateCapability';
 import { getRuntimeHost } from '../src/host';
 import { _resetMcpThrottleForTesting } from '../src/mcp/McpActions';
 import { WorkingScopeManager } from '../src/models/WorkingScopeManager';
@@ -285,6 +289,56 @@ describe('CLI mutation approval through MCP', () => {
 		expect(rawGraphql).not.toHaveBeenCalled();
 		expect(createTemplate).not.toHaveBeenCalled();
 		expect(WorkingScopeManager.getOrgs()).toEqual([]);
+	});
+
+	it.each([
+		{ request: mutation, patch: { allowGraphqlMutations: false } },
+		{ request: mutation, patch: { allowWrites: false, allowGraphqlMutations: false } },
+		{
+			request: { name: 'buddy_create_template', arguments: { orgId: 'org-a', name: 'Safe', body: '' } },
+			patch: { allowWrites: false, allowGraphqlMutations: false },
+		},
+		{ request: mutation, patch: { orgs: ['org-b'] } },
+	])('rejects policy changes during session validation: %j', async ({ request, patch }) => {
+		const agent = await start(false);
+		const session = SessionManager.getActiveSessions()[0];
+		let finishValidation!: (value: boolean) => void;
+		const validate = vi.spyOn(session, 'validate').mockImplementationOnce(
+			() =>
+				new Promise<boolean>(resolve => {
+					finishValidation = resolve;
+				}),
+		);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
+		const pending = agent.callTool(request);
+		await vi.waitFor(() => expect(validate).toHaveBeenCalled());
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: patch });
+		finishValidation(true);
+		expect((await pending).structuredContent).toMatchObject({ code: 'write_disabled' });
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+		expect(rawGraphql).not.toHaveBeenCalled();
+		expect(createTemplate).not.toHaveBeenCalled();
+	});
+
+	it('rejects editor fallback when the target org has left the current scope', async () => {
+		const agent = await start(false);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
+		const scope = { orgId: 'org-a', orgName: 'A', scopeId: 'resource', scopeName: 'Resource' };
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-b'] } });
+		expect(await requestMcpMutationApproval(scope, query)).toBe(false);
+		expect(await requestMcpScopedMutationApproval(scope, 'Edit template')).toBe(false);
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+	});
+
+	it('does not open editor fallback for currently disabled write classes', async () => {
+		const agent = await start(false);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
+		const scope = { orgId: 'org-a', orgName: 'A', scopeId: 'resource', scopeName: 'Resource' };
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { allowGraphqlMutations: false } });
+		expect(await requestMcpMutationApproval(scope, query)).toBe(false);
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { allowWrites: false } });
+		expect(await requestMcpScopedMutationApproval(scope, 'Create template')).toBe(false);
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
 	});
 
 	it('uses editor approval only when automatic approval is disabled', async () => {

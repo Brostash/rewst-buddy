@@ -602,8 +602,9 @@ export async function runCli(
 		// Raw documents can target data outside their declared org scope.
 		setMcpMutationApprover(async (scope, operation, origin) => {
 			const current = writeSettings.get();
-			if (current.approveWrites)
-				return current.allowWrites && current.allowGraphqlMutations && current.orgs.includes(scope.orgId);
+			if (!current.allowWrites || !current.allowGraphqlMutations) return false;
+			if (!current.orgs.includes(scope.orgId) && !WorkingScopeManager.hasOrg(scope.orgId)) return false;
+			if (current.approveWrites) return current.orgs.includes(scope.orgId);
 			try {
 				const result = await requestAttachedEditor('approval.mutation', { scope, operation, origin });
 				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
@@ -613,7 +614,9 @@ export async function runCli(
 		});
 		setMcpScopedMutationApprover(async (scope, operation, origin) => {
 			const current = writeSettings.get();
-			if (current.approveWrites) return current.allowWrites && current.orgs.includes(scope.orgId);
+			if (!current.allowWrites) return false;
+			if (!current.orgs.includes(scope.orgId) && !WorkingScopeManager.hasOrg(scope.orgId)) return false;
+			if (current.approveWrites) return current.orgs.includes(scope.orgId);
 			try {
 				const result = await requestAttachedEditor('approval.mutation', { scope, operation, origin });
 				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
