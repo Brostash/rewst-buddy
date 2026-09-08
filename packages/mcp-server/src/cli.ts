@@ -1,7 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { openCredentialStorage } from './credentialStorage';
 import { RuntimeWriteSettings } from './writeSettings';
 import { WorkingScopeManager } from './models/WorkingScopeManager';
 import { _resetApprovedMutationScopes } from './tools/graphqlTool';
-import { readFileSync, statSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
@@ -72,7 +73,7 @@ Options:
   --version               Show the package version
 
 Commands:
-  login --stdin            Read a session cookie from stdin (passphrase required)
+  login --stdin            Securely save a session cookie read from stdin
 `;
 
 function optionValue(arg: string, argv: string[], index: number): [string, number] {
@@ -168,15 +169,6 @@ function defaultStateDir(): string {
 		return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'Rewst Buddy');
 	if (platform() === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Rewst Buddy');
 	return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'rewst-buddy');
-}
-
-function hasPersistentCredentials(path: string): boolean {
-	try {
-		return statSync(path).isFile();
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-		throw error;
-	}
 }
 
 function readConfig(path: string | undefined): Record<string, unknown> {
@@ -353,22 +345,20 @@ async function waitForStdioClose(
 }
 
 async function runLogin(options: ParsedCliOptions, io: CliIo): Promise<number> {
-	const { FileStateStore, MemorySecretStore, EncryptedSecretStore } = await import('./storage');
 	const { configureRuntimeHost } = await import('./host');
 	const { SessionManager } = await import('./sessions/SessionManager');
 	const { startRuntime, stopRuntime } = await import('./runtime');
 	const config = readConfig(options.configPath);
 	const stateDir = options.stateDir || defaultStateDir();
 	const passphrase = process.env.REWST_BUDDY_PASSPHRASE;
-	const credentialsPath = join(stateDir, 'credentials.enc');
-	if (!passphrase && hasPersistentCredentials(credentialsPath)) {
-		io.stderr.write(
-			'Encrypted credentials were found; set REWST_BUDDY_PASSPHRASE or choose a different --state-dir before starting.\n',
-		);
+	let storage: Awaited<ReturnType<typeof openCredentialStorage>>;
+	try {
+		storage = await openCredentialStorage(stateDir, passphrase);
+	} catch (error) {
+		io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
 		return 2;
 	}
-	const state = await FileStateStore.open(join(stateDir, 'state.json'));
-	const secrets = passphrase ? await EncryptedSecretStore.open(credentialsPath, passphrase) : new MemorySecretStore();
+	const { state, secrets } = storage;
 	const secretValues = [process.env.REWST_BUDDY_MCP_TOKEN, passphrase].filter((value): value is string => !!value);
 	const host = {
 		state,
@@ -387,16 +377,12 @@ async function runLogin(options: ParsedCliOptions, io: CliIo): Promise<number> {
 			);
 		},
 		requestToken: async () => {
-			throw new Error('login --stdin requires a cookie and passphrase');
+			throw new Error('login --stdin requires a cookie');
 		},
 	};
 	configureRuntimeHost(host);
-	await startRuntime(host);
 	try {
-		if (!passphrase) {
-			io.stderr.write('login --stdin requires REWST_BUDDY_PASSPHRASE\n');
-			return 2;
-		}
+		await startRuntime(host);
 		const cookie = await readAll(io.stdin);
 		if (!cookie) {
 			io.stderr.write('No session cookie was provided on stdin\n');
@@ -411,7 +397,11 @@ async function runLogin(options: ParsedCliOptions, io: CliIo): Promise<number> {
 		}
 		return 0;
 	} finally {
-		await stopRuntime(host);
+		try {
+			await stopRuntime(host);
+		} finally {
+			await storage.close();
+		}
 	}
 }
 
@@ -534,10 +524,10 @@ export async function runCli(
 		return 0;
 	}
 
+	let storage: Awaited<ReturnType<typeof openCredentialStorage>> | undefined;
 	let host: import('./host').RuntimeHost | undefined;
 	let stopRuntime: ((host?: import('./host').RuntimeHost) => Promise<void>) | undefined;
 	try {
-		const { FileStateStore, MemorySecretStore, EncryptedSecretStore } = await import('./storage');
 		const { configureRuntimeHost } = await import('./host');
 		const { SessionManager } = await import('./sessions/SessionManager');
 		const runtime = await import('./runtime');
@@ -546,17 +536,13 @@ export async function runCli(
 		const config = readConfig(options.configPath);
 		const stateDir = options.stateDir || defaultStateDir();
 		const passphrase = process.env.REWST_BUDDY_PASSPHRASE;
-		const credentialsPath = join(stateDir, 'credentials.enc');
-		if (!passphrase && hasPersistentCredentials(credentialsPath)) {
-			io.stderr.write(
-				'Encrypted credentials were found; set REWST_BUDDY_PASSPHRASE or choose a different --state-dir before starting.\n',
-			);
+		try {
+			storage = await openCredentialStorage(stateDir, passphrase);
+		} catch (error) {
+			io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
 			return 2;
 		}
-		const state = await FileStateStore.open(join(stateDir, 'state.json'));
-		const secrets = passphrase
-			? await EncryptedSecretStore.open(credentialsPath, passphrase)
-			: new MemorySecretStore();
+		const { state, secrets } = storage;
 		const secretValues = [process.env.REWST_BUDDY_MCP_TOKEN, passphrase, process.env.REWST_SESSION_COOKIE].filter(
 			(value): value is string => !!value,
 		);
@@ -660,7 +646,11 @@ export async function runCli(
 		// encrypted vault has no passphrase).
 		ready.reject(new Error('Rewst Buddy owner stopped before becoming ready'));
 		if (hub) await hub.close().catch(() => undefined);
-		if (host && stopRuntime) await stopRuntime(host);
+		try {
+			if (host && stopRuntime) await stopRuntime(host);
+		} finally {
+			await storage?.close();
+		}
 	}
 }
 

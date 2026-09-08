@@ -80,30 +80,54 @@ then validates, refreshes, and owns that session.
 The browser extension can add a session without VS Code. Opening a Rewst
 template in an editor still requires an attached VS Code window.
 
-### One-process environment session
+### Environment session
 
 Set `REWST_SESSION_COOKIE` in the environment of the server process. Use your
 MCP client's secret settings rather than saving the cookie in a checked-in
-configuration file. The session remains in memory unless encrypted persistence
-is also enabled.
+configuration file. Validated credentials are saved securely for subsequent
+launches, including cookies received from the browser extension.
 
 ### Encrypted persistent login
 
-Set `REWST_BUDDY_PASSPHRASE`, then pass the cookie on standard input:
+Pass the cookie on standard input:
 
 ```sh
 npx --yes rewst-buddy-mcp@latest login --stdin
 ```
 
-Run the login command before starting the server, or stop and restart the
-current owner afterward. Subsequent launches must receive the same passphrase.
-Credentials are stored in `credentials.enc` using AES-256-GCM with a
-scrypt-derived key; the passphrase is not stored. Session metadata and working
-scope are stored separately in `state.json`.
+Stop the current standalone owner before running login, then start it again.
+By default, credentials are encrypted in `credentials.os.enc`; a random unlock
+key is kept in macOS Keychain, Windows Credential Manager, or Linux Secret
+Service. Linux requires `secret-tool` (usually the `libsecret-tools` or
+`libsecret` package) and an unlocked persistent Secret Service collection, such
+as GNOME Keyring. No VS Code installation is required. An OS unlock prompt may
+appear when credentials are first saved or restored.
 
-Without `REWST_BUDDY_PASSPHRASE`, credentials are held only in memory. If an
-encrypted vault already exists, startup fails until the passphrase is supplied
-or a different `--state-dir` is selected.
+For headless environments, set `REWST_BUDDY_PASSPHRASE` using your service or MCP
+client's secret settings for both login and every subsequent launch. This uses
+the existing `credentials.enc` AES-256-GCM vault with a scrypt-derived key. The
+passphrase is never stored by the server. Existing passphrase vaults remain
+compatible. Changing storage modes requires a separate state directory and a
+new login; it never silently replaces an existing vault.
+
+Session metadata and working scope are stored separately in `state.json`.
+The vault and state files are written atomically with owner-only permissions
+on POSIX systems. Keep the state directory private on Windows using your user
+profile's access controls. The OS key is tied to the canonical state-directory
+path: moving or copying the vault alone does not transfer the login.
+
+The server can list tools before any login without accessing the OS store.
+Saving a login fails clearly if secure storage is unavailable; credentials are
+never silently kept only in memory or written in plaintext. An existing vault
+must unlock before session restoration starts. Valid saved sessions are
+restored on restart; expired Rewst credentials still require a new login.
+Failed validation (including offline startup) retains profiles for a later
+restart. Removing or clearing sessions also removes their saved credentials.
+
+Only one server or login process may write a state directory at a time, even
+across different ports. Stop the owner before using `login --stdin`, or use the
+browser handoff while the owner is running. After an abrupt crash, a stale
+storage lock can take about ten seconds to expire before a new launch succeeds.
 
 The default state location follows the platform:
 
@@ -283,6 +307,11 @@ object containing a non-empty `regions` array:
   starting Rewst Buddy; do not point it at an unrelated service.
 - **Encrypted credentials found**: supply the original
   `REWST_BUDDY_PASSPHRASE`, or select a fresh state directory.
+- **Secure credential storage unavailable or locked**: unlock the OS store. On
+  Linux, install `secret-tool` and enable a persistent Secret Service. Headless
+  hosts can use `REWST_BUDDY_PASSPHRASE` with a separate state directory.
+- **Session storage is in use**: stop the owner or login process using that
+  directory before retrying.
 - **Write or scope request denied**: inspect `buddy_get_write_settings` and use
   `buddy_set_write_settings` to configure the authorized orgs and write policy,
   or attach VS Code for editor approval.

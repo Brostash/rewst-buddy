@@ -250,3 +250,35 @@ test('npm pack dry run contains only package metadata, README, license, and dist
 	);
 	assert.ok(!names.some(name => name.startsWith('src/') || name.startsWith('scripts/')));
 });
+
+test('packed secure storage survives separate processes without VS Code', () => {
+	const cli = packAndExtract();
+	const index = join(dirname(cli), 'index.cjs');
+	const stateDir = mkdtempSync(join(tmpdir(), 'rewst-buddy-restart-'));
+	const script = `
+		const { openCredentialStorage } = require(process.argv[1]);
+		(async () => {
+			const storage = await openCredentialStorage(process.argv[2], undefined, () => ({
+				get: async () => 'synthetic-OS-key-for-test-only',
+				set: async () => { throw new Error('Unexpected key replacement'); }
+			}));
+			try {
+				if (process.argv[3] === 'save') {
+					await storage.secrets.store('user', 'synthetic-cookie');
+					await storage.state.update('SessionProfiles', [{ user: { id: 'user' } }]);
+				} else {
+					require('node:assert/strict').equal(await storage.secrets.get('user'), 'synthetic-cookie');
+					require('node:assert/strict').equal(storage.state.get('SessionProfiles')[0].user.id, 'user');
+				}
+			} finally { await storage.close(); }
+		})().catch(() => { process.exitCode = 1; });
+	`;
+	for (const mode of ['save', 'restore']) {
+		const result = runNode(['-e', script, index, stateDir, mode], { cwd: tmpdir() });
+		assert.equal(result.status, 0, `separate-process ${mode} failed: ${result.stderr}`);
+		assert.equal(result.stdout, '');
+	}
+	const vault = readFileSync(join(stateDir, 'credentials.os.enc'), 'utf8');
+	assert.ok(!vault.includes('synthetic-cookie'));
+	assert.ok(!vault.includes('synthetic-OS-key-for-test-only'));
+});

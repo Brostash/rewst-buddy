@@ -216,3 +216,64 @@ it('contains no editor-runtime imports in the package session runtime', async ()
 		expect(await fs.readFile(file, 'utf8')).not.toMatch(/(?:from\s+|import\s*\()(['"])vscode\1/);
 	}
 });
+
+it('restores a saved login after failed validation and does not resurrect removed sessions', async () => {
+	const { mkdtemp, rm } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+	const { openCredentialStorage } = await import('../src/credentialStorage');
+	const { startRuntime, stopRuntime } = await import('../src/runtime');
+	const dir = await mkdtemp(join(tmpdir(), 'rewst-session-restart-'));
+	let key: string | undefined;
+	const factory = () => ({
+		get: async () => key,
+		set: async (value: string) => {
+			key = value;
+		},
+	});
+	let storage: Awaited<ReturnType<typeof openCredentialStorage>> | undefined;
+	let host: RuntimeHost | undefined;
+	async function restart() {
+		if (host) await stopRuntime(host);
+		if (storage) await storage.close();
+		storage = await openCredentialStorage(dir, undefined, factory);
+		host = {
+			state: storage.state,
+			secrets: storage.secrets,
+			getSetting: (_key, fallback) => fallback,
+			log: () => {},
+		};
+		await startRuntime(host);
+	}
+	try {
+		SessionManager._resetForTesting();
+		const sdk = makeSdk(makeUser());
+		const newSdk = vi
+			.spyOn(Session, 'newSdk')
+			.mockResolvedValue([sdk, region, { value: 'appSession=saved' } as never]);
+		await restart();
+		await SessionManager.createSession('appSession=saved');
+		newSdk.mockRejectedValue(new Error('temporarily offline'));
+		await restart();
+		expect(SessionManager.getActiveSessions()).toHaveLength(0);
+		expect(storage!.state.get<SessionProfile[]>('SessionProfiles')).toHaveLength(1);
+		newSdk.mockResolvedValue([sdk, region, { value: 'appSession=rotated' } as never]);
+		await restart();
+		expect(SessionManager.getActiveSessions()).toHaveLength(1);
+		expect(await storage!.secrets.get('user-1')).toBe('appSession=rotated');
+		await SessionManager.removeSession('user-1');
+		await restart();
+		expect(SessionManager.getActiveSessions()).toHaveLength(0);
+		expect(await storage!.secrets.get('user-1')).toBeUndefined();
+		await SessionManager.createSession('appSession=new');
+		await SessionManager.clearProfiles();
+		await restart();
+		expect(SessionManager.getActiveSessions()).toHaveLength(0);
+		expect(await storage!.secrets.get('user-1')).toBeUndefined();
+	} finally {
+		if (host) await stopRuntime(host);
+		if (storage) await storage.close();
+		vi.restoreAllMocks();
+		await rm(dir, { recursive: true, force: true });
+	}
+});

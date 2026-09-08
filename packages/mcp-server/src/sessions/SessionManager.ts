@@ -302,10 +302,11 @@ class SessionManagerImpl implements Disposable {
 	}
 
 	private async saveProfiles(): Promise<void> {
-		await context.globalState.update(
-			'SessionProfiles',
-			this.getActiveSessions().map(s => s.profile),
-		);
+		// Retain profiles that could not be restored (for example, while offline).
+		// Only explicit removal/clear should make a saved login disappear.
+		const profiles = new Map(this.getSavedProfiles().map(profile => [profile.user.id, profile]));
+		for (const session of this.getActiveSessions()) profiles.set(session.profile.user.id, session.profile);
+		await context.globalState.update('SessionProfiles', Array.from(profiles.values()));
 		await this.saveKnownProfiles();
 	}
 

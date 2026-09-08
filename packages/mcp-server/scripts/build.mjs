@@ -35,9 +35,9 @@ const baseOptions = {
 	legalComments: 'eof',
 	define: { __PACKAGE_VERSION__: JSON.stringify(packageVersion) },
 	tsconfig: join(packageRoot, 'tsconfig.json'),
-	// ws loads these native addons optionally. Keep the optional require in the
-	// bundle so installing this package never needs a compiler or native module.
-	external: ['bufferutil', 'utf-8-validate'],
+	// Keep native addons external: ws addons are optional and the OS keyring
+	// dependency supplies platform-specific prebuilt binaries at installation.
+	external: ['bufferutil', 'utf-8-validate', '@napi-rs/keyring'],
 	plugins: [rejectVscodePlugin],
 };
 
