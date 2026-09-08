@@ -82,7 +82,7 @@ export class RuntimeWriteSettings {
 			{
 				name: 'buddy_set_write_settings',
 				description:
-					'Change standalone server write permissions and org allowlist for ALL connected clients until restart. Request only changes authorized by the user. approveWrites skips Buddy approval for all writes; client approval depends on client configuration. Raw GraphQL can affect orgs outside the declared scope. Omitted fields stay unchanged; orgs replaces the allowlist. Clears remembered approvals and pinned working scope. Call tools/list after changing exposure.',
+					'Change standalone server write permissions and org allowlist for ALL connected clients until restart. Request only changes authorized by the user. MCP approval is handled by client tool permissions regardless of approveWrites; built-in editor actions retain host approval. approveWrites is a legacy compatibility setting. Raw GraphQL can affect orgs outside the declared scope. Omitted fields stay unchanged; orgs replaces the allowlist. Clears remembered approvals and pinned working scope. Call tools/list after changing exposure.',
 				inputSchema: toInputSchema(schema),
 				run: async input => this.update(input),
 			},

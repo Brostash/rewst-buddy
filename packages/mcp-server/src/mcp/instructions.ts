@@ -75,9 +75,9 @@ export function buildMcpInstructions(): string {
 			' to page through the full output.',
 		'',
 		'## Approval',
-		'Mutation tools (edit, run, autolayout) require user approval. approval_required' +
-			' errors mean the user has not yet approved that scope — surface the prompt and' +
-			' wait for confirmation before retrying.',
+		'External MCP calls use the AI client’s tool-call permissions, without Buddy approval prompts.' +
+			' Set an organization scope before writing. Write settings and scope checks still apply.' +
+			' Built-in VS Code actions retain host approval and may return approval_required.',
 	].join('\n');
 }
 

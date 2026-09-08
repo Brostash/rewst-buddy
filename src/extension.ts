@@ -1,3 +1,4 @@
+import { isMcpToolCall } from '../packages/mcp-server/src/capabilities/approvalOrigin';
 import { hasRequestingEditor, requestAttachedEditor } from '../packages/mcp-server/src/editorBridge';
 import { applyTemplateChanged } from './backend/editorEvents';
 import { requestEditorMutationApproval, requestEditorWorkingScopeApproval } from './backend/editorHost';
@@ -62,14 +63,18 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	log.info(`Starting activation of extension ${extPrefix}`);
 	setMcpMutationApprover(async (scope, operation, origin) =>
-		hasRequestingEditor()
-			? (await requestAttachedEditor('approval.mutation', { scope, operation, origin })) === true
-			: requestEditorMutationApproval(scope, operation, origin),
+		isMcpToolCall() && !hasRequestingEditor()
+			? true
+			: hasRequestingEditor()
+				? (await requestAttachedEditor('approval.mutation', { scope, operation, origin })) === true
+				: requestEditorMutationApproval(scope, operation, origin),
 	);
 	setWorkingScopeApprover(async (request, origin) =>
-		hasRequestingEditor()
-			? (await requestAttachedEditor('approval.scope', { request, origin })) === true
-			: requestEditorWorkingScopeApproval(request, origin),
+		isMcpToolCall() && !hasRequestingEditor()
+			? true
+			: hasRequestingEditor()
+				? (await requestAttachedEditor('approval.scope', { request, origin })) === true
+				: requestEditorWorkingScopeApproval(request, origin),
 	);
 
 	// Register TreeDataProvider (self-registers for session change events)

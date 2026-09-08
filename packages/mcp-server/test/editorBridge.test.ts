@@ -241,3 +241,91 @@ test('public clients refresh their catalog when editors attach, replace tools, a
 	await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(4));
 	expect(await names()).not.toContain(name);
 });
+
+test.each(['buddy_template_sync', 'buddy_template_sync_status'])(
+	'%s is only callable while a supporting VS Code editor is attached',
+	async name => {
+		configureRuntimeHost({
+			state: new MemoryStateStore(),
+			secrets: new MemorySecretStore(),
+			getSetting: (key, fallback) => (key === 'mcp.enableWriteTools' ? true : fallback) as typeof fallback,
+			log() {},
+		});
+		WorkingScopeManager.applyChange({ orgs: ['org'] });
+		const validate = vi.fn(async () => true);
+		const session = {
+			profile: { user: { id: 'user' }, org: { id: 'org', name: 'Org' }, allManagedOrgs: [] },
+			validate,
+		};
+		const sessions = vi.spyOn(SessionManager, 'getActiveSessions').mockReturnValue([session as never]);
+		const resolve = vi.spyOn(SessionManager, 'getSessionForOrg').mockResolvedValue(session as never);
+		const publicServer = createMcpServer();
+		const client = new Client({ name: 'sync-client', version: '1' });
+		const changed = vi.fn();
+		client.setNotificationHandler(ToolListChangedNotificationSchema, changed);
+		const [a, b] = InMemoryTransport.createLinkedPair();
+		await publicServer.connect(b);
+		await client.connect(a);
+		closing.push(
+			() => client.close(),
+			() => publicServer.close(),
+		);
+		const names = async () => (await client.listTools()).tools.map(tool => tool.name);
+		const request = { name, arguments: { orgId: 'org', uri: '/linked.jinja', direction: 'upload' } };
+		const expectUnavailable = async () => {
+			expect(await names()).not.toContain(name);
+			const result = await client.callTool(request);
+			expect(result.isError).toBe(true);
+			expect(result.structuredContent).toMatchObject({ code: 'unknown_tool' });
+		};
+		try {
+			await expectUnavailable();
+			const vscode = await editor();
+			// A transport connection alone does not advertise editor functionality.
+			await expectUnavailable();
+			const attached = await vscode.callTool({
+				name: 'rewst_editor_operation',
+				arguments: {
+					operation: 'editor.attach',
+					input: {
+						capabilities: [
+							{
+								spec: { name, description: 'Editor template sync', inputSchema: { type: 'object' } },
+								access: name === 'buddy_template_sync' ? 'write' : 'read',
+							},
+						],
+					},
+				},
+			});
+			expect(attached.isError).not.toBe(true);
+			await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+			expect(await names()).toContain(name);
+			expect((await client.callTool(request)).isError).not.toBe(true);
+
+			// The capability has already been resolved when the editor disconnects.
+			let finishValidation!: (valid: boolean) => void;
+			validate.mockImplementationOnce(
+				() =>
+					new Promise<boolean>(resolve => {
+						finishValidation = resolve;
+					}),
+			);
+			const pending = client.callTool(request);
+			await vi.waitFor(() => expect(finishValidation).toBeDefined());
+			await vscode.close();
+			await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(2));
+			finishValidation(true);
+			const interrupted = await pending;
+			expect(interrupted.isError).toBe(true);
+			expect(interrupted.content).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ type: 'text', text: expect.stringMatching(/No editor is attached/) }),
+				]),
+			);
+			await expectUnavailable();
+		} finally {
+			sessions.mockRestore();
+			resolve.mockRestore();
+		}
+	},
+);
