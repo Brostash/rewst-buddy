@@ -266,13 +266,12 @@ controls the external `/mcp` bridge, not the chat model's local tool
 contribution. The in-process path SHALL still honor the capability registry's
 write-tool, dangerous-GraphQL, working-scope, approval, throttle, and
 per-capability gates. Each in-process Buddy tool call that mutates Rewst data
-SHALL be confirmed through the same custom approval modal and session-scoped
-mutation-scope reuse cache that mcp-bridge's external MCP transport uses (see
-mcp-bridge's `Reuse approvals only for reusable mutation scopes` requirement) —
-Buddy tools never surface as native `vscode.lm` tool calls, so VS Code's own
-per-tool confirmation/auto-approve UI does not apply to this path. Approving a
-mutation scope from chat also satisfies it for the external MCP transport
-within the same extension session, and vice versa.
+SHALL use the built-in approval modal and session-scoped mutation cache (see
+mcp-bridge's `Reuse approvals only for reusable mutation scopes` requirement).
+External MCP calls delegate approval to their AI client and SHALL NOT populate
+that editor cache. Buddy tools never surface as native `vscode.lm` tool calls,
+so VS Code's own per-tool confirmation/auto-approve UI does not apply to the
+built-in chat path.
 
 #### Scenario: Assistant requests a tool
 

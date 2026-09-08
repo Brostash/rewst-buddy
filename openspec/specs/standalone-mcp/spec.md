@@ -65,13 +65,13 @@ The standalone server SHALL accept a session cookie through an environment
 variable or a local `login --stdin` command. It SHALL NOT ask an agent to put
 credentials into tool arguments. Persistent credentials SHALL be encrypted
 using an operator-supplied passphrase; without a passphrase, credentials SHALL
-remain in memory. Writes SHALL be disabled by default. Noninteractive write
-approval SHALL require an explicit operator flag and an organization allowlist,
-which a model-requested scope change cannot expand.
-Blanket noninteractive approval SHALL apply only to typed writes whose resource
-scope is verified. Arbitrary GraphQL mutations SHALL require approval of the
-concrete query and variables from an attached editor on every call, even with
-`--approve-writes`; without that approval they SHALL NOT execute.
+remain in memory. Writes SHALL be disabled by default. External MCP calls SHALL delegate approval to the AI client's tool-call
+permissions by default, including scope changes and enabled raw mutations.
+The server SHALL retain write enablement, organization/workflow scope checks,
+resource ownership checks, and the separate raw GraphQL opt-in. Legacy
+`approveWrites` settings SHALL NOT bypass built-in editor approval or be
+required for public MCP calls. Runtime write settings remain shared by all
+clients connected to the owner until restart.
 
 #### Scenario: No write grant
 
@@ -79,13 +79,42 @@ concrete query and variables from an attached editor on every call, even with
 - **WHEN** a client attempts a mutation
 - **THEN** no authenticated write occurs
 
+#### Scenario: MCP approval without an editor
+
+- **GIVEN** writes are enabled for an effective organization scope
+- **AND** no editor is attached and `approveWrites` is false
+- **WHEN** the AI client permits an enabled MCP write or scope change
+- **THEN** Buddy does not request GUI approval
+- **AND** all server-side scope and resource checks remain enforced
+
 #### Scenario: Raw mutation declares an allowed org but targets another
 
-- **GIVEN** a session manages orgs A and B, and `--approve-writes` grants only A
-- **AND** raw GraphQL mutations are enabled
-- **WHEN** a client declares A but supplies a mutation targeting B
-- **THEN** the standing write grant does not approve the mutation
-- **AND** without concrete approval from an attached editor no mutation occurs
+- **GIVEN** raw GraphQL is explicitly enabled and the declared org is in scope
+- **WHEN** an MCP client permits a mutation document targeting another org
+- **THEN** Buddy delegates approval to the client without a GUI prompt
+- **AND** documentation states that declared scope does not contain raw GraphQL
+
+### Requirement: Keep editor-only tools tied to a live editor
+
+Template sync and sync-status tools SHALL be absent and uncallable until an
+editor advertises them. The last supporting editor disconnecting SHALL remove
+them and notify MCP clients that the tool catalog changed. A call that loses
+its editor before dispatch SHALL fail rather than execute elsewhere without an editor.
+Trusted bridge metadata SHALL preserve external MCP approval routing; private
+editor actions and envelopes without origin metadata SHALL retain host approval.
+Tool arguments SHALL NOT select the approval origin.
+
+#### Scenario: Editor disconnects before sync dispatch
+
+- **GIVEN** an MCP sync call is preparing its session
+- **WHEN** the last supporting editor disconnects
+- **THEN** the pending call fails and subsequent cached-name calls are rejected
+
+#### Scenario: Tool arguments attempt to change approval origin
+
+- **GIVEN** a private editor action with an `origin: mcp` tool argument
+- **WHEN** it reaches the editor capability adapter
+- **THEN** it remains an editor action requiring host approval
 
 ### Requirement: Local HTTP transport
 

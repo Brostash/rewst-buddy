@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { isAllowedScopeChange, parseCliArgs, runCli } from '../src/cli';
+import { parseCliArgs, runCli } from '../src/cli';
 
 function io() {
 	const stdin = new PassThrough();
@@ -30,7 +30,7 @@ describe('standalone CLI argument boundary', () => {
 		expect(parseCliArgs(['--org', 'one,two', '--org=three']).orgs).toEqual(['one', 'two', 'three']);
 	});
 
-	it('requires explicit write approval and a non-empty org scope', () => {
+	it('validates legacy approval flags and raw-write prerequisites', () => {
 		expect(() => parseCliArgs(['--approve-writes'])).toThrow(/requires --allow-writes/);
 		expect(() => parseCliArgs(['--allow-writes', '--approve-writes'])).toThrow(/at least one --org/);
 		expect(() => parseCliArgs(['--allow-graphql-mutations', '--org', 'one'])).toThrow(/--allow-writes/);
@@ -39,16 +39,6 @@ describe('standalone CLI argument boundary', () => {
 			allowGraphqlMutations: true,
 			approveWrites: false,
 		});
-	});
-
-	it('keeps approved scope changes inside the explicit organization allowlist', () => {
-		const allowed = new Set(['org-allowed']);
-		expect(isAllowedScopeChange({ orgs: [{ id: 'org-allowed' }], workflows: [] }, allowed)).toBe(true);
-		expect(isAllowedScopeChange({ orgs: [{ id: 'org-forbidden' }], workflows: [] }, allowed)).toBe(false);
-		expect(
-			isAllowedScopeChange({ orgs: [], workflows: [{ id: 'workflow', orgId: 'org-forbidden' }] }, allowed),
-		).toBe(false);
-		expect(isAllowedScopeChange({ orgs: [], workflows: [{ id: 'workflow' }] }, allowed)).toBe(false);
 	});
 
 	it('stops the runtime when stdio reaches EOF', async () => {

@@ -3,7 +3,7 @@ import {
 	requestMcpScopedMutationApproval,
 } from '../src/capabilities/graphqlMutateCapability';
 import { getRuntimeHost } from '../src/host';
-import { _resetMcpThrottleForTesting } from '../src/mcp/McpActions';
+import { callTool, _resetMcpThrottleForTesting } from '../src/mcp/McpActions';
 import { WorkingScopeManager } from '../src/models/WorkingScopeManager';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import { mkdtempSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runCli } from '../src/cli';
-import { requestAttachedEditor } from '../src/editorBridge';
+import { hasRequestingEditor, requestAttachedEditor } from '../src/editorBridge';
 import { createMcpServer } from '../src/mcpServer';
 import { SessionManager } from '../src/sessions/SessionManager';
 import type Session from '../src/sessions/Session';
@@ -30,6 +30,7 @@ vi.mock('../src/sharedHttp', () => ({
 vi.mock('../src/editorBridge', async importOriginal => ({
 	...(await importOriginal<typeof import('../src/editorBridge')>()),
 	requestAttachedEditor: vi.fn(),
+	hasRequestingEditor: vi.fn(() => false),
 }));
 
 const query =
@@ -38,6 +39,12 @@ const mutation = {
 	name: 'buddy_graphql_mutate',
 	arguments: { orgId: 'org-a', scopeId: 'org-a', scopeName: 'template', query },
 };
+
+// Built-in chat calls carry a trusted in-process origin, never a public tool argument.
+async function editorCall(request: { name: string; arguments: Record<string, unknown> }) {
+	const result = await callTool({ ...request, origin: 'chat' });
+	return { ...result, structuredContent: { result: JSON.parse(result.text) } };
+}
 
 describe('CLI mutation approval through MCP', () => {
 	let cliDone: Promise<number> | undefined;
@@ -53,6 +60,7 @@ describe('CLI mutation approval through MCP', () => {
 
 	beforeEach(() => {
 		_resetMcpThrottleForTesting();
+		vi.mocked(hasRequestingEditor).mockReturnValue(false);
 		listener.ready = undefined;
 		rawGraphql.mockClear();
 		createTemplate.mockClear();
@@ -116,8 +124,8 @@ describe('CLI mutation approval through MCP', () => {
 		return client;
 	}
 
-	it('delegates typed and raw write approval to the client when approveWrites is enabled', async () => {
-		const agent = await start();
+	it.each([false, true])('delegates MCP approval to the client with approveWrites=%s', async approveWrites => {
+		const agent = await start(approveWrites);
 		const typed = await agent.callTool({
 			name: 'buddy_create_template',
 			arguments: { orgId: 'org-a', name: 'Safe', body: '' },
@@ -125,6 +133,62 @@ describe('CLI mutation approval through MCP', () => {
 		expect(typed.structuredContent).toMatchObject({ result: { status: 'created' } });
 		expect((await agent.callTool(mutation)).isError).not.toBe(true);
 		expect(rawGraphql).toHaveBeenCalledExactlyOnceWith(query, undefined);
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+	});
+
+	it('sets MCP working scope without an attached editor or write approval flag', async () => {
+		const agent = await start(false, true);
+		const result = await agent.callTool({
+			name: 'buddy_set_working_scope',
+			arguments: { orgs: ['org-a'], replace: true },
+		});
+		expect(result.isError).not.toBe(true);
+		expect(WorkingScopeManager.getOrgs()).toEqual(['org-a']);
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+	});
+
+	it('does not let MCP writes approve later built-in editor writes', async () => {
+		const agent = await start(true);
+		const create = { name: 'buddy_create_template', arguments: { orgId: 'org-a', name: 'Safe', body: '' } };
+		await agent.callTool(create);
+		expect(createTemplate).toHaveBeenCalledTimes(1);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(false);
+		expect((await editorCall(create)).structuredContent).toMatchObject({ result: { status: 'approval_required' } });
+		expect(createTemplate).toHaveBeenCalledTimes(1);
+		expect(requestAttachedEditor).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps approval for unmarked in-process extension calls', async () => {
+		await start(true);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(false);
+		expect(
+			await requestMcpScopedMutationApproval(
+				{ orgId: 'org-a', orgName: 'A', scopeId: 'resource', scopeName: 'Resource' },
+				'Edit template',
+			),
+		).toBe(false);
+		expect(requestAttachedEditor).toHaveBeenCalledTimes(1);
+	});
+
+	it('preserves private editor prompts even with an MCP origin and legacy auto approval', async () => {
+		const agent = await start(true);
+		vi.mocked(hasRequestingEditor).mockReturnValue(true);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(false);
+		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({
+			result: { status: 'approval_required' },
+		});
+		expect(rawGraphql).not.toHaveBeenCalled();
+		expect(requestAttachedEditor).toHaveBeenCalledTimes(1);
+	});
+
+	it('rejects writes to organizations outside the effective scope', async () => {
+		const agent = await start(false);
+		const outside = await agent.callTool({
+			name: 'buddy_create_template',
+			arguments: { orgId: 'org-b', name: 'Outside', body: '' },
+		});
+		expect(outside.structuredContent).toMatchObject({ code: 'org_out_of_scope' });
+		expect(createTemplate).not.toHaveBeenCalled();
 		expect(requestAttachedEditor).not.toHaveBeenCalled();
 	});
 
@@ -148,10 +212,8 @@ describe('CLI mutation approval through MCP', () => {
 		expect((await agent.callTool(mutation)).isError).not.toBe(true);
 		expect(requestAttachedEditor).not.toHaveBeenCalled();
 		expect((await configure({ approveWrites: false })).isError).not.toBe(true);
-		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({
-			result: { status: 'approval_required' },
-		});
-		expect(rawGraphql).toHaveBeenCalledTimes(1);
+		expect((await agent.callTool(mutation)).isError).not.toBe(true);
+		expect(rawGraphql).toHaveBeenCalledTimes(2);
 		expect((await configure({ allowWrites: false, allowGraphqlMutations: false })).isError).not.toBe(true);
 		expect((await agent.callTool(mutation)).isError).toBe(true);
 		expect((await agent.listTools()).tools.map(t => t.name)).not.toContain('buddy_workflow_run');
@@ -170,14 +232,15 @@ describe('CLI mutation approval through MCP', () => {
 			expect(createTemplate).toHaveBeenCalledTimes(1);
 			const changed = vi.fn();
 			peer.setNotificationHandler(ToolListChangedNotificationSchema, changed);
-			await agent.callTool({ name: 'buddy_set_write_settings', arguments: { approveWrites: false } });
+			await agent.callTool({
+				name: 'buddy_set_write_settings',
+				arguments: { allowWrites: false, approveWrites: false, allowGraphqlMutations: false },
+			});
 			await vi.waitFor(() => expect(changed).toHaveBeenCalled());
 			expect((await peer.callTool({ name: 'buddy_get_write_settings' })).structuredContent).toMatchObject({
 				result: { approveWrites: false },
 			});
-			expect((await peer.callTool(create)).structuredContent).toMatchObject({
-				result: { status: 'approval_required' },
-			});
+			expect((await peer.callTool(create)).isError).toBe(true);
 			expect(createTemplate).toHaveBeenCalledTimes(1);
 		} finally {
 			await peer.close();
@@ -245,7 +308,7 @@ describe('CLI mutation approval through MCP', () => {
 							approve = resolve;
 						}),
 				);
-			const pending = agent.callTool({ name: 'buddy_set_working_scope', arguments: arguments_ });
+			const pending = editorCall({ name: 'buddy_set_working_scope', arguments: arguments_ });
 			await vi.waitFor(() => expect(requestAttachedEditor).toHaveBeenCalledTimes(2));
 			await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-b'] } });
 			approve(true);
@@ -276,7 +339,7 @@ describe('CLI mutation approval through MCP', () => {
 					approve = resolve;
 				}),
 		);
-		const pending = agent.callTool(request);
+		const pending = editorCall(request);
 		await vi.waitFor(() => expect(requestAttachedEditor).toHaveBeenCalled());
 		await agent.callTool({
 			name: 'buddy_set_write_settings',
@@ -320,6 +383,31 @@ describe('CLI mutation approval through MCP', () => {
 		expect(createTemplate).not.toHaveBeenCalled();
 	});
 
+	it('rejects an in-flight write if the working workflow changes during session validation', async () => {
+		const agent = await start(false);
+		WorkingScopeManager.applyChange({ workflows: ['wf-before'] });
+		const session = SessionManager.getActiveSessions()[0];
+		let finish!: (valid: boolean) => void;
+		vi.spyOn(session, 'validate').mockImplementationOnce(
+			() =>
+				new Promise<boolean>(resolve => {
+					finish = resolve;
+				}),
+		);
+		const pending = agent.callTool({
+			...mutation,
+			arguments: { ...mutation.arguments, scopeName: 'workflow', scopeId: 'wf-before' },
+		});
+		await vi.waitFor(() => expect(finish).toBeDefined());
+		WorkingScopeManager.applyChange({ workflows: ['wf-after'], replace: true });
+		finish(true);
+		const result = await pending;
+		expect(result.isError).toBe(true);
+		expect(result.structuredContent).toMatchObject({ code: 'workflow_out_of_scope' });
+		expect(rawGraphql).not.toHaveBeenCalled();
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+	});
+
 	it('rejects editor fallback when the target org has left the current scope', async () => {
 		const agent = await start(false);
 		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
@@ -341,19 +429,19 @@ describe('CLI mutation approval through MCP', () => {
 		expect(requestAttachedEditor).not.toHaveBeenCalled();
 	});
 
-	it('uses editor approval only when automatic approval is disabled', async () => {
+	it('keeps built-in editor approval independent of MCP permissions', async () => {
 		const agent = await start(false);
 		vi.mocked(requestAttachedEditor)
 			.mockResolvedValueOnce(false)
 			.mockResolvedValueOnce({ approved: true })
 			.mockResolvedValueOnce(false);
-		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({
+		expect((await editorCall(mutation)).structuredContent).toMatchObject({
 			result: { status: 'approval_required' },
 		});
 		expect(rawGraphql).not.toHaveBeenCalled();
-		expect((await agent.callTool(mutation)).isError).not.toBe(true);
+		expect((await editorCall(mutation)).isError).not.toBe(true);
 		expect(rawGraphql).toHaveBeenCalledExactlyOnceWith(query, undefined);
-		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({
+		expect((await editorCall(mutation)).structuredContent).toMatchObject({
 			result: { status: 'approval_required' },
 		});
 		expect(rawGraphql).toHaveBeenCalledTimes(1);
@@ -363,7 +451,7 @@ describe('CLI mutation approval through MCP', () => {
 	it('supports concrete editor approval without automatic typed write approval', async () => {
 		const agent = await start(false);
 		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
-		expect((await agent.callTool(mutation)).isError).not.toBe(true);
+		expect((await editorCall(mutation)).isError).not.toBe(true);
 		expect(rawGraphql).toHaveBeenCalledExactlyOnceWith(query, undefined);
 		expect(requestAttachedEditor).toHaveBeenCalledTimes(1);
 	});

@@ -20,8 +20,9 @@ Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`, `mcpServer.ts`,
 
 The backend package and embedded client boundary are specified in
 [`standalone-mcp`](../standalone-mcp/spec.md). References below to VS Code
-approval describe the extension host; standalone approval follows its explicit
-operator policy.
+approval describe built-in extension actions. External MCP calls delegate
+approval to the AI client’s tool-call permissions, including optional editor
+tools and scope changes. They retain server-side scope and write-policy checks.
 
 ## Requirements
 
@@ -441,15 +442,21 @@ allowed set SHALL be rejected with `org_out_of_scope`.
 
 ### Requirement: A model may only request a scope change
 
-The system SHALL treat the working scope as the user's deliberate selection. A
-model-driven tool SHALL only be able to _request_ a scope change
-(`buddy_set_working_scope`), which takes effect after a VS Code modal; it SHALL
-NOT be able to widen `alwaysAllowedOrgs`.
+The system SHALL apply requested scope changes only after validating organization
+and workflow membership. External MCP calls SHALL use the AI client's tool
+permissions; built-in editor actions SHALL retain the VS Code modal. The scope
+tool SHALL NOT alter the standing allowlist. The standalone runtime settings
+tool MAY replace that allowlist under the client's tool permissions.
 
-#### Scenario: Model requests a scope change
+#### Scenario: MCP client requests a scope change
 
-- **WHEN** a tool calls `buddy_set_working_scope`
-- **THEN** the change is applied only after the user accepts the VS Code modal
+- **WHEN** an external client permits `buddy_set_working_scope`
+- **THEN** valid scope changes apply without a VS Code modal
+
+#### Scenario: Built-in editor action requests a scope change
+
+- **WHEN** the built-in action requests a scope change
+- **THEN** the change is applied only after host approval
 
 ### Requirement: Validate tool inputs defensively
 
@@ -805,25 +812,12 @@ The system SHALL remember approval for mutation scopes that are safe to reuse
 within the current extension session — a typed write capability (e.g. rename,
 update body, create) whose `scopeId` has been verified against a real fetched
 resource id, or a repeated auto-layout of the same workflow — in a single
-process-global cache keyed by organization id and resource id. This cache is
-not transport-specific: it is shared by both the in-process Cage-Free Rewsty
-chat tool path and the external MCP transport, behind the one
-mutation-approval modal both paths call — see ai-chat's `Run in-process Buddy
-tools with a per-response cap` requirement for the chat-side description of
-this same mechanism. The system SHALL still require fresh approval for
-operations whose execution itself is the risky action: running a workflow,
-editing a workflow's definition (each edit is a distinct graph change the user
-has not seen), any delete-type mutation (delete template, delete tag, delete
-org variable, delete workflow) regardless of any prior non-delete approval
-already recorded for that same resource — the approval scope is keyed only by
-organization and resource id, with no operation-type component, so a delete
-sharing a resource's scope with an earlier rename/update approval must never
-silently reuse it (#177) — and `buddy_graphql_mutate`, whose caller supplies an
-arbitrary `scopeId` alongside an arbitrary mutation document with no
-verification that the two are related, so a scope-keyed approval there has no
-fixed relationship to what any given call actually does and MUST NOT be
-reused, even for a byte-identical repeat of the same query and scope (#177
-follow-up).
+process-global cache keyed by organization id and resource id. MCP calls SHALL
+NOT populate the editor approval cache. Built-in actions SHALL require fresh approval for workflow execution, workflow
+edits, every delete-type mutation, and raw GraphQL. A prior rename or update
+approval SHALL NOT authorize deletion of the same resource. Raw GraphQL SHALL
+never reuse a scope-keyed approval because caller-declared scope identifiers
+do not establish what the document mutates, even for byte-identical repeats.
 
 #### Scenario: Reused mutation approval for a typed write capability
 
@@ -831,15 +825,11 @@ follow-up).
 - **WHEN** the same mutation scope is requested again in the same session
 - **THEN** the mutation can run without prompting again
 
-#### Scenario: Approval reuse crosses the chat/MCP transport boundary
+#### Scenario: MCP approval does not grant editor approval
 
-- **GIVEN** a typed write capability's mutation scope was approved through the
-  in-process Cage-Free Rewsty chat tool path
-- **WHEN** the same org+resource scope is requested again through the external
-  MCP transport in the same extension session
-- **THEN** the mutation can run without prompting again
-- **AND** the reverse also holds: a scope approved through the external MCP
-  transport is reused for the in-process chat path
+- **GIVEN** an external MCP client has performed a typed write
+- **WHEN** a built-in editor action requests the same org and resource
+- **THEN** the MCP call does not satisfy the editor approval requirement
 
 #### Scenario: buddy_graphql_mutate never reuses a scope approval
 
@@ -1550,3 +1540,14 @@ is surfaced rather than hidden.
 - **WHEN** the diff is computed
 - **THEN** the field is not reported as changed — only a genuine value change
   appears in the diff
+
+### Requirement: Recheck scope after asynchronous call preparation
+
+The MCP boundary SHALL recheck current organization and workflow scope after
+session resolution and validation, before dispatching a capability.
+
+#### Scenario: Workflow selection changes while validating a session
+
+- **GIVEN** a pending write targeting the currently selected workflow
+- **WHEN** the selected workflow changes before session validation finishes
+- **THEN** the write is rejected as out of scope before capability dispatch

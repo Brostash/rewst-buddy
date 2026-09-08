@@ -12,7 +12,7 @@ import { rawGraphqlOrThrow } from './inputHelpers';
  * Read and request changes to the user's working scope (see WorkingScopeManager).
  * `buddy_get_working_scope` lets a model or external client see what it is allowed to
  * operate on; `buddy_set_working_scope` lets it *request* a change, which only takes
- * effect after the user confirms the host approval request. Setting the scope is not itself
+ * effect under client tool permissions for MCP, or host approval for built-in actions. Setting the scope is not itself
  * a Rewst write, so it stays available regardless of the write-tool toggles —
  * otherwise you could not narrow scope before enabling writes.
  */
@@ -130,7 +130,7 @@ const setWorkingScopeSpec: ToolSpec = {
 	name: 'buddy_set_working_scope',
 	args: '{"orgs"?: string[], "workflows"?: string[], "replace"?: boolean}',
 	description:
-		'Request a change to the working scope (the orgs/workflows tools may operate on). The change only applies after the host approves it; until then nothing changes. Provide org ids (from buddy_list_orgs) and/or workflow ids. By default the ids are added to the current scope; set replace:true to replace the listed dimension. To work on a different org or workflow, request it here rather than passing a different orgId to other tools.',
+		'Request a change to the working scope (the orgs/workflows tools may operate on). External MCP clients authorize this call through their tool permissions; built-in editor actions require host approval. Provide org ids (from buddy_list_orgs) and/or workflow ids. By default the ids are added to the current scope; set replace:true to replace the listed dimension. To work on a different org or workflow, request it here rather than passing a different orgId to other tools.',
 	inputSchema: {
 		type: 'object',
 		properties: {

@@ -41,13 +41,13 @@ You can also ask:
 Install **Node.js 22+**, then configure your MCP client to launch:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest
+npx -y rewst-buddy-mcp@latest
 ```
 
 For example, with **Codex**:
 
 ```sh
-codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@latest
+codex mcp add rewst-buddy -- npx -y rewst-buddy-mcp@latest
 ```
 
 Your client starts the server for you. Copy the setup for [Codex](docs/mcp-setup.md#codex), [Claude Code](docs/mcp-setup.md#claude-code), [Cursor](docs/mcp-setup.md#cursor), [VS Code / GitHub Copilot](docs/mcp-setup.md#vs-code--github-copilot), or [another local client](docs/mcp-setup.md#other-local-mcp-clients).

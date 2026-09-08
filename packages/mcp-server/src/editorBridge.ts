@@ -1,3 +1,4 @@
+import { isMcpToolCall } from './capabilities/approvalOrigin';
 import { z } from 'zod';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -91,6 +92,8 @@ function attach(server: Server, input: Record<string, unknown>): void {
 						if (!peer) throw new Error('No editor is attached for this capability');
 						return String(
 							await requestEditor(peer, 'capability.run', {
+								// Only the trusted envelope carries approval origin; never tool arguments.
+								origin: isMcpToolCall() && !hasRequestingEditor() ? 'mcp' : 'chat',
 								name,
 								args,
 								context: {
@@ -121,6 +124,7 @@ export function createSharedEditorServer(): Server {
 							return capability.run(args, context);
 						return String(
 							await requestEditor(server, 'capability.run', {
+								origin: 'chat',
 								name: capability.spec.name,
 								args,
 								context: {

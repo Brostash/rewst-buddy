@@ -331,7 +331,9 @@ The system SHALL expose MCP sync helpers that report link state and run syncs by
 explicit local path. `buddy_template_sync_status` SHALL be a read operation that
 maps the sync decision into user-facing states. `buddy_template_sync` SHALL allow
 automatic direction selection or explicit `upload` / `download` directions, with
-approval required before uploads to Rewst. The `buddy_template_sync` tool SHALL
+approval delegated to the AI client for external MCP uploads and retained in
+the host for built-in editor uploads. Both sync tools SHALL be available only
+while a supporting VS Code editor is attached. The `buddy_template_sync` tool SHALL
 be classified as write-tier for external MCP exposure in every direction
 because automatic sync can upload to Rewst and explicit download can overwrite a
 workspace file; every call SHALL require write tools to be enabled and the
@@ -358,8 +360,8 @@ subject to workspace target validation and sync organization guards.
 
 - **GIVEN** a linked file whose local body is empty
 - **WHEN** `buddy_template_sync` is explicitly called with direction `upload`
-- **THEN** the approval prompt and result state that the remote template body will
-  be cleared
+- **THEN** the result states that the remote template body will be cleared
+- **AND** built-in editor approval also states that the body will be cleared
 
 #### Scenario: Download direction
 

@@ -429,6 +429,8 @@ export async function callTool(
 				'Write policy changed while preparing this call. Retry under the current settings.',
 			);
 		}
+		// Scope may have changed while session resolution or validation was awaiting I/O.
+		assertScopeAllowed(capability, orgId ?? '', args, settings);
 		try {
 			// Tag the in-flight call with its origin so the deep approval modal can
 			// name the caller (the chat vs an external MCP client).

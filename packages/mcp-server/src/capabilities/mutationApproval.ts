@@ -1,3 +1,4 @@
+import { isMcpToolCall } from './approvalOrigin';
 import { approveMutationScope, isMutationScopeApproved, type MutationScope } from '../tools/graphqlTool';
 import type { CapabilityContext } from './Capability';
 import { requestMcpScopedMutationApproval } from './graphqlMutateCapability';
@@ -49,7 +50,8 @@ export async function withMutationApproval(
 		if (!(await requestMcpScopedMutationApproval(scope, operationSummary))) {
 			return approvalRequiredResult();
 		}
-		if (!opts.alwaysPrompt) approveMutationScope(scope);
+		// MCP permission is per tool call and must never become an editor approval.
+		if (!opts.alwaysPrompt && !isMcpToolCall()) approveMutationScope(scope);
 	}
 	return run();
 }

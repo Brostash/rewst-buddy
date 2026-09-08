@@ -190,25 +190,25 @@ Useful tools include `buddy_list_orgs`, `buddy_get_working_scope`, `buddy_workfl
 
 `buddy_graphql_query` supports query operations and schema exploration; it rejects mutations and subscriptions. Prefer a dedicated tool when one covers the task.
 
-Working scope is shared and persisted by the server. Inspect it with `buddy_get_working_scope`; request changes with `buddy_set_working_scope`. In the default strict mode, a pinned organization scope restricts reads too. Scope changes normally require approval from an attached VS Code window, so initial read-only setup does not require you to pin a scope.
+Working scope is shared and persisted by the server. Inspect it with `buddy_get_working_scope`; request changes with `buddy_set_working_scope`. In the default strict mode, a pinned organization scope restricts reads too. MCP scope changes use your AI client’s tool-call permissions and do not require VS Code. Initial read-only discovery does not require a pinned scope.
 
 ## Enabling writes
 
 Writes require an effective organization scope and the owner's write policy. To allow typed write tools without VS Code approval dialogs, stop the existing owner and launch it with:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest --org YOUR_ORG_ID --allow-writes --approve-writes
+npx --yes rewst-buddy-mcp@latest --org YOUR_ORG_ID --allow-writes
 ```
 
 For a client-managed stdio server, append those flags to its `args` array instead. Replace `YOUR_ORG_ID` with an ID returned by `buddy_list_orgs`.
 
 - `--org` sets the owner's standing organization allowlist. Repeat it or use comma-separated IDs for multiple organizations.
 - `--allow-writes` exposes typed write tools.
-- `--approve-writes` gives standing approval to typed writes and scope requests within that allowlist. Resource membership and workflow scope checks still apply.
+- `--approve-writes` is accepted for compatibility but is no longer needed. Resource membership and workflow scope checks still apply.
 
-Without `--approve-writes`, typed writes require approval from an attached VS Code window and are denied when no editor is attached. A tool-requested scope change cannot expand the standalone owner's organization allowlist.
+External MCP calls use the AI client’s tool-call permissions, including working-scope and runtime write-setting changes. No Buddy approval dialog is required. Built-in VS Code actions keep their approval prompts. Runtime write settings affect every client connected to the owner until restart.
 
-**Raw GraphQL mutations always require an attached editor's approval for each call.** They additionally require `--org`, `--allow-writes`, and `--allow-graphql-mutations`; `--approve-writes` does not bypass that approval.
+**Raw GraphQL mutations require a separate opt-in:** `--allow-graphql-mutations` alongside `--org` and `--allow-writes`. Approval belongs to the AI client. An arbitrary mutation can affect organizations outside its declared org; that argument does not sandbox the document.
 
 For a first write, ask the assistant to inspect the target, describe the proposed change, and apply it to an explicitly named organization and resource.
 
@@ -276,18 +276,18 @@ See the [editor quick start](quickstart.md), [features](features.md), and [setti
 
 ## Troubleshooting
 
-| Symptom                                                | What to check                                                                                                                                          |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Server will not launch / `npx` not found               | Confirm Node.js 22+ is installed in the client's environment. Check the client's PATH or use an absolute executable path.                              |
-| Tools appear, but “No Rewst sessions are active”       | Reload a signed-in Rewst organization page with Chrome handoff installed, or supply a session through the owner's environment/login flow.              |
-| Browser reports that the VS Code server is not running | Start the standalone server on port 27121, then reload the Rewst page. The message can refer to the shared server even without VS Code.                |
-| Session is rejected                                    | Confirm you are still signed in and the owner has the matching Rewst region configured.                                                                |
-| HTTP connection is unauthorized                        | Supply the owner's MCP bearer token, not the Rewst cookie or vault passphrase.                                                                         |
-| “An existing Rewst Buddy server owns this port”        | Remove owner-only settings from the attaching process, or stop the owner before restarting with new settings.                                          |
-| Discovery / identity error                             | Check which process owns port 27121. An unrelated or incompatible listener cannot be reused.                                                           |
-| Encrypted credentials found / vault cannot unlock      | Supply the original passphrase, or choose a fresh state directory.                                                                                     |
-| Write or scope request denied                          | Check owner policy and organization/workflow scope. Attach VS Code for approval, or configure the standalone typed-write allowlist and approval flags. |
-| Template-opening action fails                          | Attach a compatible Rewst Buddy VS Code window. Session transfer alone does not open an editor.                                                        |
+| Symptom                                                | What to check                                                                                                                             |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Server will not launch / `npx` not found               | Confirm Node.js 22+ is installed in the client's environment. Check the client's PATH or use an absolute executable path.                 |
+| Tools appear, but “No Rewst sessions are active”       | Reload a signed-in Rewst organization page with Chrome handoff installed, or supply a session through the owner's environment/login flow. |
+| Browser reports that the VS Code server is not running | Start the standalone server on port 27121, then reload the Rewst page. The message can refer to the shared server even without VS Code.   |
+| Session is rejected                                    | Confirm you are still signed in and the owner has the matching Rewst region configured.                                                   |
+| HTTP connection is unauthorized                        | Supply the owner's MCP bearer token, not the Rewst cookie or vault passphrase.                                                            |
+| “An existing Rewst Buddy server owns this port”        | Remove owner-only settings from the attaching process, or stop the owner before restarting with new settings.                             |
+| Discovery / identity error                             | Check which process owns port 27121. An unrelated or incompatible listener cannot be reused.                                              |
+| Encrypted credentials found / vault cannot unlock      | Supply the original passphrase, or choose a fresh state directory.                                                                        |
+| Write or scope request denied                          | Check owner write policy, organization/workflow scope, and your AI client’s tool permissions.                                             |
+| Template-opening action fails                          | Attach a compatible Rewst Buddy VS Code window. Session transfer alone does not open an editor.                                           |
 
 Logs go to standard error; standard output is reserved for MCP messages. Use your client's MCP logs to diagnose startup failures. Run `npx --yes rewst-buddy-mcp@latest --help` for all launch options.
 

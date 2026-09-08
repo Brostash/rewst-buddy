@@ -6,6 +6,10 @@ It runs without VS Code; the Rewst Buddy VS Code extension adds editor UI,
 linked files, and sync-on-save by connecting to the same server.
 
 For an illustrated first run, see the [project setup guide](https://github.com/totallynotjon/rewst-buddy/blob/main/docs/mcp-setup.md) and [Chrome walkthrough](https://github.com/totallynotjon/rewst-buddy/blob/main/docs/browser-extension.md).
+`buddy_template_sync` and `buddy_template_sync_status` are available only while
+a VS Code editor providing those tools is attached. They are removed from the
+MCP tool catalog when the last supporting editor disconnects, and calls using a
+cached tool name are rejected. MCP clients receive a tool-list change notification.
 
 ## Requirements
 
@@ -19,7 +23,7 @@ For an illustrated first run, see the [project setup guide](https://github.com/t
 Add this command to your MCP client:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest
+npx -y rewst-buddy-mcp@latest
 ```
 
 An illustrative stdio configuration is:
@@ -29,7 +33,7 @@ An illustrative stdio configuration is:
 	"mcpServers": {
 		"rewst-buddy": {
 			"command": "npx",
-			"args": ["--yes", "rewst-buddy-mcp@latest"]
+			"args": ["-y", "rewst-buddy-mcp@latest"]
 		}
 	}
 }
@@ -45,7 +49,7 @@ Codex CLI, the Codex IDE extension, and ChatGPT desktop share the host's local
 MCP configuration. Register the stdio server with:
 
 ```sh
-codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@latest
+codex mcp add rewst-buddy -- npx -y rewst-buddy-mcp@latest
 ```
 
 Restart the desktop client or extension host after changing the configuration,
@@ -94,7 +98,7 @@ launches, including cookies received from the browser extension.
 Pass the cookie on standard input:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest login --stdin
+npx -y rewst-buddy-mcp@latest login --stdin
 ```
 
 Stop the current standalone owner before running login, then start it again.
@@ -148,7 +152,7 @@ Code window. Set a random `REWST_BUDDY_MCP_TOKEN` in both the server process and
 your MCP client's secret settings, then start:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest --transport http --port 27121
+npx -y rewst-buddy-mcp@latest --transport http --port 27121
 ```
 
 Connect the client to `http://127.0.0.1:27121/mcp` with this header:
@@ -201,17 +205,17 @@ scope.
 For typed write tools in explicitly allowed organizations, start the owner with:
 
 ```sh
-npx --yes rewst-buddy-mcp@latest \
+npx -y rewst-buddy-mcp@latest \
 	--org YOUR_ORG_ID \
-	--allow-writes \
-	--approve-writes
+	--allow-writes
 ```
 
 `--org` is repeatable and also accepts comma-separated IDs. It initializes the
-owner's standing allowlist. `--approve-writes` skips Buddy's approval prompts
-for all enabled write tools, including workflow run/edit and raw GraphQL.
-The AI client is responsible for enforcing tool-call permissions; configure its
-approval policy accordingly. Buddy cannot guarantee a client confirmation.
+owner's standing allowlist. External MCP calls delegate approval to the AI
+client's tool-call permissions by default, including scope changes and enabled
+writes. No attached editor or `--approve-writes` flag is needed. Buddy cannot
+guarantee a client confirmation; configure permissions in your AI client.
+Built-in VS Code actions retain their editor approval prompts.
 
 You can also configure a running standalone owner without restarting it, even
 when it was launched with no write flags. Call `buddy_get_write_settings` to
@@ -219,10 +223,10 @@ inspect the current policy, then `buddy_set_write_settings` with, for example:
 
 ```json
 {
-  "orgs": ["YOUR_ORG_ID"],
-  "allowWrites": true,
-  "approveWrites": true,
-  "allowGraphqlMutations": false
+	"orgs": ["YOUR_ORG_ID"],
+	"allowWrites": true,
+	"approveWrites": false,
+	"allowGraphqlMutations": false
 }
 ```
 
@@ -244,9 +248,10 @@ GraphQL additionally requires `allowGraphqlMutations: true` (or the launch flag
 `--allow-graphql-mutations`). Raw documents can affect organizations outside the
 declared scope: the declared org is not a sandbox for arbitrary GraphQL.
 
-With `approveWrites: false`, writes and working-scope changes use attached-editor
-approval and are denied headlessly. With it enabled, working-scope changes must
-stay inside the configured allowlist and no per-write Buddy prompt appears.
+`approveWrites` and `--approve-writes` remain accepted for compatibility but do
+not control approval routing. MCP clients handle their own permissions; built-in
+VS Code actions use host approval regardless of this legacy setting. Scope
+changes still validate organization and workflow membership before applying.
 The MCP server does not expose arbitrary shell-command execution.
 
 ## Sharing with VS Code
@@ -316,12 +321,12 @@ object containing a non-empty `regions` array:
   directory before retrying.
 - **Write or scope request denied**: inspect `buddy_get_write_settings` and use
   `buddy_set_write_settings` to configure the authorized orgs and write policy,
-  or attach VS Code for editor approval.
+  then set the intended working scope. MCP tool permissions belong to your AI client.
 - **Browser handoff fails**: confirm the server is listening on the browser
   extension's configured loopback port and that you are signed in to the matching
   Rewst region.
 
-Run `npx --yes rewst-buddy-mcp@latest --help` for the complete CLI option list.
+Run `npx -y rewst-buddy-mcp@latest --help` for the complete CLI option list.
 
 ## Local development and embedding
 

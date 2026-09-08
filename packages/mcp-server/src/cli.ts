@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { openCredentialStorage } from './credentialStorage';
+import { isMcpToolCall } from './capabilities/approvalOrigin';
 import { RuntimeWriteSettings } from './writeSettings';
 import { WorkingScopeManager } from './models/WorkingScopeManager';
 import { _resetApprovedMutationScopes } from './tools/graphqlTool';
@@ -12,6 +13,7 @@ import {
 	broadcastEditorEvent,
 	createSharedEditorServer,
 	handleSharedBrowserAction,
+	hasRequestingEditor,
 	requestAttachedEditor,
 } from './editorBridge';
 import { runStdioProxy } from './stdioProxy';
@@ -43,18 +45,6 @@ export interface CliIo {
 	stderr: Writable;
 }
 
-/** Returns whether a requested scope stays within the CLI's explicit --org set. */
-export function isAllowedScopeChange(
-	request: { orgs: readonly { id: string }[]; workflows: readonly { orgId?: string }[] },
-	allowedOrgs: ReadonlySet<string> | readonly string[],
-): boolean {
-	const allowed = allowedOrgs instanceof Set ? allowedOrgs : new Set(allowedOrgs);
-	return (
-		request.orgs.every(org => allowed.has(org.id)) &&
-		request.workflows.every(workflow => typeof workflow.orgId === 'string' && allowed.has(workflow.orgId))
-	);
-}
-
 const HELP = `Usage: rewst-buddy-mcp [options]
 
 Run a Rewst Buddy MCP server over stdio (the default) or localhost HTTP.
@@ -64,7 +54,7 @@ Options:
   --port PORT             HTTP port (default: ${DEFAULT_PORT})
   --org ORG[,ORG...]      Organization allowed for writes (repeatable)
   --allow-writes          Expose write tools
-  --approve-writes        Delegate enabled write approvals to the MCP client
+  --approve-writes        Legacy compatibility flag; MCP clients handle approval
   --allow-graphql-mutations  Expose raw GraphQL mutation tools
   --state-dir PATH        Directory for session metadata and credentials
   --config PATH           JSON file containing validated region settings
@@ -584,13 +574,13 @@ export async function runCli(
 		configureRuntimeHost(host);
 		const { setMcpMutationApprover, setMcpScopedMutationApprover, setWorkingScopeApprover } =
 			await import('./capabilities/index');
-		// Automatic approval delegates the per-call decision to the MCP client.
+		// External MCP clients own tool-call approval. Built-in editor actions keep host prompts.
 		// Raw documents can target data outside their declared org scope.
 		setMcpMutationApprover(async (scope, operation, origin) => {
 			const current = writeSettings.get();
 			if (!current.allowWrites || !current.allowGraphqlMutations) return false;
 			if (!current.orgs.includes(scope.orgId) && !WorkingScopeManager.hasOrg(scope.orgId)) return false;
-			if (current.approveWrites) return current.orgs.includes(scope.orgId);
+			if (isMcpToolCall() && !hasRequestingEditor()) return true;
 			try {
 				const result = await requestAttachedEditor('approval.mutation', { scope, operation, origin });
 				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
@@ -602,7 +592,7 @@ export async function runCli(
 			const current = writeSettings.get();
 			if (!current.allowWrites) return false;
 			if (!current.orgs.includes(scope.orgId) && !WorkingScopeManager.hasOrg(scope.orgId)) return false;
-			if (current.approveWrites) return current.orgs.includes(scope.orgId);
+			if (isMcpToolCall() && !hasRequestingEditor()) return true;
 			try {
 				const result = await requestAttachedEditor('approval.mutation', { scope, operation, origin });
 				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
@@ -611,8 +601,7 @@ export async function runCli(
 			}
 		});
 		setWorkingScopeApprover(async (request, origin) => {
-			const current = writeSettings.get();
-			if (current.approveWrites) return isAllowedScopeChange(request, current.orgs);
+			if (isMcpToolCall() && !hasRequestingEditor()) return true;
 			try {
 				const result = await requestAttachedEditor('approval.scope', { request, origin });
 				return result === true || (result as { approved?: unknown } | undefined)?.approved === true;
