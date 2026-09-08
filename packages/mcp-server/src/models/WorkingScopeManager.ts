@@ -156,6 +156,7 @@ class WorkingScopeManagerImpl implements Disposable {
 		this.ensureLoaded();
 		this.orgs.clear();
 		this.workflows.clear();
+		this.workflowNames.clear();
 		this.commit();
 	}
 

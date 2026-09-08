@@ -1,3 +1,11 @@
+import {
+	requestMcpMutationApproval,
+	requestMcpScopedMutationApproval,
+} from '../src/capabilities/graphqlMutateCapability';
+import { getRuntimeHost } from '../src/host';
+import { _resetMcpThrottleForTesting } from '../src/mcp/McpActions';
+import { WorkingScopeManager } from '../src/models/WorkingScopeManager';
+import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,12 +44,15 @@ describe('CLI mutation approval through MCP', () => {
 	let stdin: PassThrough | undefined;
 	let client: Client | undefined;
 	let server: ReturnType<typeof createMcpServer> | undefined;
-	const rawGraphql = vi.fn(async (_query: string, _variables?: Record<string, unknown>) => ({
-		data: { template: { id: 'new-template', orgId: 'org-b' } },
-	}));
+	const rawGraphql = vi.fn(
+		async (_query: string, _variables?: Record<string, unknown>): Promise<Record<string, unknown>> => ({
+			data: { template: { id: 'new-template', orgId: 'org-b' } },
+		}),
+	);
 	const createTemplate = vi.fn(async () => ({ template: { id: 'typed-template', name: 'Safe' } }));
 
 	beforeEach(() => {
+		_resetMcpThrottleForTesting();
 		listener.ready = undefined;
 		rawGraphql.mockClear();
 		createTemplate.mockClear();
@@ -77,17 +88,21 @@ describe('CLI mutation approval through MCP', () => {
 		vi.unstubAllEnvs();
 	});
 
-	async function start(approveWrites = true): Promise<Client> {
+	async function start(approveWrites = true, bare = false): Promise<Client> {
 		stdin = new PassThrough();
 		cliDone = runCli(
 			[
 				'--state-dir',
 				mkdtempSync(join(tmpdir(), 'rewst-cli-approval-')),
-				'--org',
-				'org-a',
-				'--allow-writes',
-				...(approveWrites ? ['--approve-writes'] : []),
-				'--allow-graphql-mutations',
+				...(bare
+					? []
+					: [
+							'--org',
+							'org-a',
+							'--allow-writes',
+							...(approveWrites ? ['--approve-writes'] : []),
+							'--allow-graphql-mutations',
+						]),
 			],
 			{ stdin, stdout: new PassThrough(), stderr: new PassThrough() },
 		);
@@ -101,28 +116,233 @@ describe('CLI mutation approval through MCP', () => {
 		return client;
 	}
 
-	it('does not auto-approve raw GraphQL against a sibling org in a headless CLI', async () => {
+	it('delegates typed and raw write approval to the client when approveWrites is enabled', async () => {
 		const agent = await start();
 		const typed = await agent.callTool({
 			name: 'buddy_create_template',
 			arguments: { orgId: 'org-a', name: 'Safe', body: '' },
 		});
 		expect(typed.structuredContent).toMatchObject({ result: { status: 'created' } });
-		expect(createTemplate).toHaveBeenCalledWith({ orgId: 'org-a', name: 'Safe', body: '' });
+		expect((await agent.callTool(mutation)).isError).not.toBe(true);
+		expect(rawGraphql).toHaveBeenCalledExactlyOnceWith(query, undefined);
 		expect(requestAttachedEditor).not.toHaveBeenCalled();
-		// The typed create also remembers approval for scopeId=org-a. Raw
-		// documents must not inherit that approval or the CLI's scoped policy.
-		const result = await agent.callTool(mutation);
-		expect(result.structuredContent).toMatchObject({ result: { status: 'approval_required' } });
-		expect(rawGraphql).not.toHaveBeenCalled();
-		expect(requestAttachedEditor).toHaveBeenCalledWith(
-			'approval.mutation',
-			expect.objectContaining({ operation: query, scope: expect.objectContaining({ orgId: 'org-a' }) }),
-		);
 	});
 
-	it('requires approval of every raw operation even with automatic typed writes enabled', async () => {
+	it('configures a bare owner through MCP, broadcasts exposure changes, and revokes writes', async () => {
+		const agent = await start(false, true);
+		const changed = vi.fn();
+		agent.setNotificationHandler(ToolListChangedNotificationSchema, changed);
+		expect((await agent.listTools()).tools.map(t => t.name)).toContain('buddy_set_write_settings');
+		expect((await agent.listTools()).tools.map(t => t.name)).not.toContain('buddy_workflow_run');
+		const configure = (args: Record<string, unknown>) =>
+			agent.callTool({ name: 'buddy_set_write_settings', arguments: args });
+		expect((await configure({ allowWrites: true })).isError).toBe(true);
+		expect(
+			(await configure({ orgs: ['org-a'], allowWrites: true, approveWrites: true, allowGraphqlMutations: true }))
+				.isError,
+		).not.toBe(true);
+		await vi.waitFor(() => expect(changed).toHaveBeenCalled());
+		expect((await agent.listTools()).tools.map(t => t.name)).toEqual(
+			expect.arrayContaining(['buddy_workflow_run', 'buddy_workflow_edit', 'buddy_graphql_mutate']),
+		);
+		expect((await agent.callTool(mutation)).isError).not.toBe(true);
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+		expect((await configure({ approveWrites: false })).isError).not.toBe(true);
+		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({
+			result: { status: 'approval_required' },
+		});
+		expect(rawGraphql).toHaveBeenCalledTimes(1);
+		expect((await configure({ allowWrites: false, allowGraphqlMutations: false })).isError).not.toBe(true);
+		expect((await agent.callTool(mutation)).isError).toBe(true);
+		expect((await agent.listTools()).tools.map(t => t.name)).not.toContain('buddy_workflow_run');
+	});
+
+	it('shares settings with another connection and clears cached typed approvals on revocation', async () => {
 		const agent = await start();
+		const peerServer = createMcpServer();
+		const peer = new Client({ name: 'peer', version: '1' });
+		const [peerTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+		await peerServer.connect(serverTransport);
+		await peer.connect(peerTransport);
+		try {
+			const create = { name: 'buddy_create_template', arguments: { orgId: 'org-a', name: 'Safe', body: '' } };
+			expect((await agent.callTool(create)).isError).not.toBe(true);
+			expect(createTemplate).toHaveBeenCalledTimes(1);
+			const changed = vi.fn();
+			peer.setNotificationHandler(ToolListChangedNotificationSchema, changed);
+			await agent.callTool({ name: 'buddy_set_write_settings', arguments: { approveWrites: false } });
+			await vi.waitFor(() => expect(changed).toHaveBeenCalled());
+			expect((await peer.callTool({ name: 'buddy_get_write_settings' })).structuredContent).toMatchObject({
+				result: { approveWrites: false },
+			});
+			expect((await peer.callTool(create)).structuredContent).toMatchObject({
+				result: { status: 'approval_required' },
+			});
+			expect(createTemplate).toHaveBeenCalledTimes(1);
+		} finally {
+			await peer.close();
+			await peerServer.close();
+		}
+	});
+
+	it('audits successful and invalid settings calls and shares the normal tool throttle', async () => {
+		const agent = await start();
+		const audit = vi.spyOn(getRuntimeHost(), 'log');
+		expect(
+			(await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-a'] } })).isError,
+		).not.toBe(true);
+		expect(audit).toHaveBeenCalledWith(
+			'info',
+			expect.stringMatching(/\[MCP audit\] tool=buddy_set_write_settings .*outcome=ok/),
+		);
+		expect(
+			(await agent.callTool({ name: 'buddy_set_write_settings', arguments: { allowWrites: 'invalid' } })).isError,
+		).toBe(true);
+		expect(audit).toHaveBeenCalledWith(
+			'info',
+			expect.stringMatching(/tool=buddy_set_write_settings .*outcome=error:/),
+		);
+		for (let i = 0; i < 28; i++) await agent.callTool({ name: 'buddy_get_write_settings' });
+		WorkingScopeManager.applyChange({ orgs: ['org-a'], workflows: ['wf'], replace: true }, [
+			{ id: 'wf', name: 'Pinned' },
+		]);
+		const denied = await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-b'] } });
+		expect(denied.structuredContent).toMatchObject({ code: 'rate_limited' });
+		expect(audit).toHaveBeenCalledWith(
+			'info',
+			expect.stringMatching(/tool=buddy_set_write_settings .*outcome=error:rate_limited/),
+		);
+		expect(WorkingScopeManager.getOrgs()).toEqual(['org-a']);
+		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({ code: 'rate_limited' });
+	});
+
+	it('keeps pinned scope when a client resends unchanged settings', async () => {
+		const agent = await start();
+		WorkingScopeManager.applyChange({ orgs: ['org-a'], workflows: ['wf'] }, [{ id: 'wf', name: 'Pinned' }]);
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: {} });
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-a'], approveWrites: true } });
+		expect(WorkingScopeManager.snapshot()).toEqual({ orgs: ['org-a'], workflows: ['wf'] });
+		expect(WorkingScopeManager.workflowNames.get('wf')).toBe('Pinned');
+	});
+
+	it.each([{ orgs: ['org-a'], workflows: ['wf'] }, { workflows: ['wf', 'wf2'] }])(
+		'invalidates earlier approvals in a multi-item scope transaction: %j',
+		async arguments_ => {
+			const agent = await start(false);
+			rawGraphql.mockImplementationOnce(async () => ({
+				data: { workflow: { id: 'wf', name: 'Workflow', orgId: 'org-a' } },
+			}));
+			if (arguments_.workflows.length === 2)
+				rawGraphql.mockImplementationOnce(async () => ({
+					data: { workflow: { id: 'wf2', name: 'Second', orgId: 'org-a' } },
+				}));
+			let approve!: (value: boolean) => void;
+			vi.mocked(requestAttachedEditor)
+				.mockResolvedValueOnce(true)
+				.mockImplementationOnce(
+					() =>
+						new Promise<boolean>(resolve => {
+							approve = resolve;
+						}),
+				);
+			const pending = agent.callTool({ name: 'buddy_set_working_scope', arguments: arguments_ });
+			await vi.waitFor(() => expect(requestAttachedEditor).toHaveBeenCalledTimes(2));
+			await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-b'] } });
+			approve(true);
+			expect((await pending).structuredContent).toMatchObject({ result: { status: 'denied' } });
+			expect(WorkingScopeManager.snapshot()).toEqual({ orgs: [], workflows: [] });
+			expect(WorkingScopeManager.workflowNames.size).toBe(0);
+		},
+	);
+
+	it('clears named workflow metadata with the pinned scope', async () => {
+		const agent = await start();
+		WorkingScopeManager.applyChange({ workflows: ['wf'] }, [{ id: 'wf', name: 'Pinned' }]);
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { approveWrites: false } });
+		expect(WorkingScopeManager.getWorkflows()).toEqual([]);
+		expect(WorkingScopeManager.workflowNames.size).toBe(0);
+	});
+
+	it.each([
+		mutation,
+		{ name: 'buddy_create_template', arguments: { orgId: 'org-a', name: 'Safe', body: '' } },
+		{ name: 'buddy_set_working_scope', arguments: { orgs: ['org-a'], replace: true } },
+	])('invalidates pending editor approval for $name when settings change', async request => {
+		const agent = await start(false);
+		let approve!: (value: boolean) => void;
+		vi.mocked(requestAttachedEditor).mockImplementation(
+			() =>
+				new Promise<boolean>(resolve => {
+					approve = resolve;
+				}),
+		);
+		const pending = agent.callTool(request);
+		await vi.waitFor(() => expect(requestAttachedEditor).toHaveBeenCalled());
+		await agent.callTool({
+			name: 'buddy_set_write_settings',
+			arguments: { allowWrites: false, allowGraphqlMutations: false },
+		});
+		approve(true);
+		expect((await pending).structuredContent).toMatchObject({
+			result: { status: request.name === 'buddy_set_working_scope' ? 'denied' : 'approval_required' },
+		});
+		expect(rawGraphql).not.toHaveBeenCalled();
+		expect(createTemplate).not.toHaveBeenCalled();
+		expect(WorkingScopeManager.getOrgs()).toEqual([]);
+	});
+
+	it.each([
+		{ request: mutation, patch: { allowGraphqlMutations: false } },
+		{ request: mutation, patch: { allowWrites: false, allowGraphqlMutations: false } },
+		{
+			request: { name: 'buddy_create_template', arguments: { orgId: 'org-a', name: 'Safe', body: '' } },
+			patch: { allowWrites: false, allowGraphqlMutations: false },
+		},
+		{ request: mutation, patch: { orgs: ['org-b'] } },
+	])('rejects policy changes during session validation: %j', async ({ request, patch }) => {
+		const agent = await start(false);
+		const session = SessionManager.getActiveSessions()[0];
+		let finishValidation!: (value: boolean) => void;
+		const validate = vi.spyOn(session, 'validate').mockImplementationOnce(
+			() =>
+				new Promise<boolean>(resolve => {
+					finishValidation = resolve;
+				}),
+		);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
+		const pending = agent.callTool(request);
+		await vi.waitFor(() => expect(validate).toHaveBeenCalled());
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: patch });
+		finishValidation(true);
+		expect((await pending).structuredContent).toMatchObject({ code: 'write_disabled' });
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+		expect(rawGraphql).not.toHaveBeenCalled();
+		expect(createTemplate).not.toHaveBeenCalled();
+	});
+
+	it('rejects editor fallback when the target org has left the current scope', async () => {
+		const agent = await start(false);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
+		const scope = { orgId: 'org-a', orgName: 'A', scopeId: 'resource', scopeName: 'Resource' };
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-b'] } });
+		expect(await requestMcpMutationApproval(scope, query)).toBe(false);
+		expect(await requestMcpScopedMutationApproval(scope, 'Edit template')).toBe(false);
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+	});
+
+	it('does not open editor fallback for currently disabled write classes', async () => {
+		const agent = await start(false);
+		vi.mocked(requestAttachedEditor).mockResolvedValue(true);
+		const scope = { orgId: 'org-a', orgName: 'A', scopeId: 'resource', scopeName: 'Resource' };
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { allowGraphqlMutations: false } });
+		expect(await requestMcpMutationApproval(scope, query)).toBe(false);
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { allowWrites: false } });
+		expect(await requestMcpScopedMutationApproval(scope, 'Create template')).toBe(false);
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+	});
+
+	it('uses editor approval only when automatic approval is disabled', async () => {
+		const agent = await start(false);
 		vi.mocked(requestAttachedEditor)
 			.mockResolvedValueOnce(false)
 			.mockResolvedValueOnce({ approved: true })

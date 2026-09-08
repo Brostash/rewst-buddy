@@ -1,3 +1,5 @@
+import type { RuntimeWriteSettings } from './writeSettings';
+
 /** Host services supplied by a standalone process or the embedding application. */
 export interface StateStore {
 	get<T>(key: string, fallback: T): T;
@@ -14,6 +16,7 @@ export interface SecretStore {
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
 export interface RuntimeHost {
+	writeSettings?: RuntimeWriteSettings;
 	state: StateStore;
 	secrets: SecretStore;
 	getSetting<T>(key: string, fallback: T): T;
@@ -28,6 +31,11 @@ let configuredHost: RuntimeHost | undefined;
 
 export function configureRuntimeHost(host: RuntimeHost): void {
 	configuredHost = host;
+}
+
+/** Optional standalone controls; editor-only servers can be created before host startup. */
+export function getRuntimeWriteSettings(): RuntimeWriteSettings | undefined {
+	return configuredHost?.writeSettings;
 }
 
 export function getRuntimeHost(): RuntimeHost {
