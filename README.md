@@ -1,89 +1,93 @@
-# Rewst Buddy — Unofficial VS Code Extension for Rewst
+# Rewst Buddy
 
-> ⚠️ **Unofficial community project.** This extension is not affiliated with, endorsed by, or supported by Rewst LLC. "Rewst" is a trademark of its respective owner. Use at your own risk — for support, open an issue on [GitHub](https://github.com/totallynotjon/rewst-buddy/issues), not with Rewst.
+**Understand your workflows. Investigate failures. Work from your AI assistant.**
 
-## About
+Connect **Codex, Claude Code, Cursor, VS Code, or another local MCP client** to Rewst. Find the workflow you need, follow a failed run through its task outputs, and read the templates behind it—all using your existing Rewst session and permissions.
 
-Edit Rewst templates locally in VS Code instead of juggling browser tabs. Link a local file to a Rewst template, edit it with full editor tooling (git, extensions, AI agents), and sync changes back on save — with conflict detection so you don't overwrite someone else's edits.
+Rewst Buddy is an **unofficial community project**, unaffiliated with or supported by Rewst LLC.
 
-See the [Quick Start](docs/quickstart.md) for first-time setup.
+**[Connect your assistant →](docs/mcp-setup.md)** · **[Try an investigation](docs/using-mcp.md)**
 
-## Install
+**Here for the VS Code extension?** [Start with the editor quick start →](docs/quickstart.md) to link templates, edit locally, and sync changes back to Rewst. The extension can run the server itself; a separate standalone installation is optional.
 
-Search "rewst-buddy" in the VS Code Extensions view, or install from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=JBramley.rewst-buddy).
+## Start with the question you need answered
 
-## Quick Start
+> Why did Employee Onboarding fail in Acme? Find the latest failed run, inspect the failed task's input and output, and explain the evidence. Propose a fix without changing anything.
 
-### 1. Connect a session
+Rewst Buddy gives your assistant tools to follow that question from workflow to execution to task output. Instead of supplying the workflow contents yourself, you can ask it to retrieve the relevant data and explain what it finds.
 
-- Click the Rewst Buddy icon in the activity bar
-- Paste your `appSession` cookie → **Connect**
-- _(Or use the companion browser extension — see [Quick Start docs](docs/quickstart.md#first-time-session-setup).)_
+For example, an investigation might uncover:
 
-### 2. Link a single template
+| Evidence retrieved                                                             | What the assistant can explain                                                                  |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| The workflow graph and failed execution                                        | Which task failed and where it sits in the onboarding process.                                  |
+| A task input with an empty email field and an output reporting a missing email | The immediate failure is a missing input; the output alone does not establish why it was empty. |
+| The expression that supplies that field                                        | What to inspect next and which change to propose for review.                                    |
 
-- Open or create a local file
-- Right-click in the editor → **Link File to Template**
-- Pick your organization and the template
+_Illustrative scenario, not a captured run. Acme and Employee Onboarding are example names; actual findings depend on your workflow and execution data._
 
-### 3. Edit and sync
+**[Walk through the investigation →](docs/using-mcp.md)**
 
-- Edit the file
-- Click the status bar item (bottom-left) to enable sync-on-save
-- **Save** → change syncs to Rewst (with conflict detection)
+You can also ask:
 
-Want to pull in **every template** from an organization at once? See the [Bulk Folder Workflow](docs/quickstart.md#bulk-folder-workflow).
+- **Understand a workflow:** “Find the onboarding workflow in Acme and explain its tasks, branches, and integrations.”
+- **Find reusable code:** “Find notification templates in Acme and show their contents.”
+- **Explore the API:** “Inspect the GraphQL schema and build a read-only query for this data.”
 
-## Features at a glance
+## Connect in three steps
 
-- Auto-sync on save with conflict detection — conflicts open a diff instead of a blind modal, and `Diff Against Rewst` compares any linked file any time
-- Jinja IntelliSense — filter completion/hover, template-name completion inside `template("...")`, and dialect keyword highlighting
-- Jinja live preview — `Preview Jinja Render` opens a side panel that re-renders the active linked file (or selection) against a real execution's context as you type
-- Cage-Free Rewsty chat model — Rewst's AI assistant (RoboRewsty) right in VS Code's chat model picker, **no GitHub account or Copilot plan needed**; it can read, search, and edit your workspace files to ground its answers
-- Opt-in workflow tools — let Cage-Free Rewsty find workflows by name across your orgs, read one as a node/edge graph, search actions, edit with high-level operations, and run and debug them from execution logs (approval-gated, reversible)
-- Working scope — pin which orgs (and workflows) Rewst tools may touch so an AI assistant can't operate on the wrong org; writes are blocked until you set one
-- Auto-fetch on open — picks up remote changes when you open a file
-- `Ctrl+Click` template navigation + hover info on `template('UUID')` calls
-- Template bundles — dependency-based grouping in the Explorer sidebar
-- Crate installer — browse the Crate catalog and install one into an org, with a config wizard built from the crate's own options (triggers install disabled by default)
-- Smart template opening — reuses existing linked files instead of creating untitled docs
-- File rename support + automatic stale link cleanup
-- Browser extension integration (sideload — not yet on the Chrome Web Store)
-- Multi-region support
+### 1 · Add Rewst Buddy to your assistant
 
-Full detail → [docs/features.md](docs/features.md).
+Install **Node.js 22+**, then configure your MCP client to launch:
 
-## Security & Authentication
+```sh
+npx --yes rewst-buddy-mcp@latest
+```
 
-Rewst does not publish a public API, so this extension authenticates the same way the Rewst web app does: with your browser session cookie (`appSession`, or the equivalent cookie for your region — see [Multi-Region Setup](docs/reference.md#multi-region-setup)). A companion [browser extension](https://github.com/totallynotjon/rewst-buddy-browser) automates the cookie transfer (sideload required — not yet on the Chrome Web Store).
+For example, with **Codex**:
 
-- When VS Code owns the backend, your cookie is stored in VS Code's built-in [SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage). The standalone MCP package keeps credentials in memory by default and supports passphrase-encrypted persistence.
-- The backend connects to Rewst's API. Data returned through MCP is also subject to the connected client's data-handling policy.
-- Sessions inherit your current Rewst permissions — the extension can do nothing you can't already do in the browser.
+```sh
+codex mcp add rewst-buddy -- npx --yes rewst-buddy-mcp@latest
+```
 
-If you have security concerns, the codebase is MIT-licensed and open for audit — please [open an issue](https://github.com/totallynotjon/rewst-buddy/issues) with any findings.
+Your client starts the server for you. Copy the setup for [Codex](docs/mcp-setup.md#codex), [Claude Code](docs/mcp-setup.md#claude-code), [Cursor](docs/mcp-setup.md#cursor), [VS Code / GitHub Copilot](docs/mcp-setup.md#vs-code--github-copilot), or [another local client](docs/mcp-setup.md#other-local-mcp-clients).
 
-## Configuration
+### 2 · Connect your Rewst session
 
-Commands, settings, sidebar/status-bar walkthroughs, and multi-region setup: [docs/reference.md](docs/reference.md).
+Install the [Chrome companion](docs/browser-extension.md), start the server in your assistant, then reload a signed-in Rewst organization page. The companion transfers your session to the local server. **VS Code is optional for this setup.**
 
-## Support & Contributing
+The companion requires loading an unpacked extension; the [illustrated walkthrough](docs/browser-extension.md) shows each step. For another Rewst region or an environment without a local browser, see [session options](docs/mcp-setup.md#chrome-extension-and-rewst-login).
 
-- **Bugs & feature requests**: [GitHub Issues](https://github.com/totallynotjon/rewst-buddy/issues) (not Rewst support)
-- **Source**: [github.com/totallynotjon/rewst-buddy](https://github.com/totallynotjon/rewst-buddy)
+### 3 · Verify the connection, then investigate
 
-## License
+Ask: **“Use Rewst Buddy to list my organizations and show the current working scope.”** An organization list confirms that the server can access Rewst. Then try the investigation above with your own organization and workflow names.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+## How it connects
 
-## Standalone MCP server
+![Connection diagram: AI clients connect to a local Rewst Buddy server; Chrome supplies the Rewst session, and optional VS Code adds editing and approvals.](docs/images/how-it-connects.png)
 
-The Rewst backend also lives in an independently versioned npm package in
-[`packages/mcp-server`](packages/mcp-server/README.md). After publication, any
-stdio MCP client can launch it with `npx --yes rewst-buddy-mcp@latest`; it can
-also run as a persistent Streamable HTTP server on localhost. VS Code is optional.
+Your assistant uses MCP to call Rewst Buddy's tools. The local server connects to Rewst using your session. Data returned to your assistant is subject to that client's data-handling policy.
 
-The extension and standalone package reuse the first authenticated Rewst Buddy
-owner on port 27121, so sessions, scope, and policy stay in one place. See the
-[standalone MCP guide](packages/mcp-server/README.md) for authentication, client
-configuration, GraphQL access, write approvals, and troubleshooting.
+## Read first. Choose when to enable changes
+
+The default setup enables read tools and disables writes. You can investigate a failure and review a proposed fix before enabling changes.
+
+Optional writes are controlled by organization scope and approval settings. You can require approval in an attached VS Code window, or grant **standing approval** for supported write tools within an organization allowlist. Standing approval lets those writes proceed **without a prompt for each change**. Raw GraphQL mutations always require an attached editor's approval for each call.
+
+**[Configure write permissions and scope →](docs/mcp-setup.md#enabling-writes)**
+
+## Edit templates in VS Code
+
+The [VS Code extension](https://marketplace.visualstudio.com/items?itemName=JBramley.rewst-buddy) adds linked template files, sync-on-save with conflict detection, Jinja completion and live preview, and approval dialogs. Link one template or mirror an organization's templates into a folder, then work with your usual editor tools.
+
+**[Set up template editing →](docs/quickstart.md)** · **[Explore editor features](docs/features.md)**
+
+## Go further
+
+- [MCP setup and troubleshooting](docs/mcp-setup.md): client configurations, login, regions, and environment requirements.
+- [Chrome walkthrough](docs/browser-extension.md): download, load, and verify session transfer.
+- [Persistent server](docs/mcp-setup.md#persistent-http-server): share a server between clients and keep it running after an assistant closes.
+- [Server reference](packages/mcp-server/README.md): launch flags, credential storage, and embedding.
+- [All documentation](docs/README.md) · [Build from source](docs/mcp-setup.md#build-from-source)
+
+MIT licensed. [Report an issue](https://github.com/totallynotjon/rewst-buddy/issues) · [Browser extension source](https://github.com/totallynotjon/rewst-buddy-browser)

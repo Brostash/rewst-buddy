@@ -1,4 +1,12 @@
-# Quick Start
+# VS Code quick start
+
+[← Documentation](README.md) · [MCP setup](mcp-setup.md) · [Chrome walkthrough](browser-extension.md)
+
+Use this guide when you want to edit Rewst templates locally. For AI tool access without an editor, start with the [MCP setup guide](mcp-setup.md).
+
+![Marketplace listing with the Rewst Buddy installation command.](images/vscode-marketplace.png)
+
+Install the [VS Code companion](https://marketplace.visualstudio.com/items?itemName=JBramley.rewst-buddy), then choose an editing workflow.
 
 Two paths are available depending on how much of an organization you want to pull local. Pick one — you can always switch later.
 
@@ -22,15 +30,15 @@ Alternatively, run `Rewst Buddy: New Rewst Session` from the Command Palette (Cm
 
 ### Option B: Companion browser extension (auto-transfer)
 
-The [Rewst Buddy Browser Extension](https://github.com/totallynotjon/rewst-buddy-browser) transfers your session to VS Code automatically when you visit any Rewst page.
+The [browser companion](browser-extension.md) transfers your session to the shared local server when you reload a signed-in Rewst organization page.
 
-> Not yet on the Chrome Web Store — you must sideload it (load unpacked in developer mode). See the [rewst-buddy-browser README](https://github.com/totallynotjon/rewst-buddy-browser) for instructions.
+1. Follow the [illustrated Chrome setup](browser-extension.md) and load the `build-chrome/` folder.
+2. Start a standalone owner on port 27121, or let VS Code start its own server (`rewst-buddy.server.enabled` is on by default).
+3. Reload an organization page in Rewst. A compatible attached VS Code window uses the owner's session.
 
-1. Clone or download the browser extension and load it unpacked in your browser's extensions page
-2. The VS Code-side server is enabled by default and starts automatically
-3. Navigate to any Rewst page — your session transfers without any copy/paste
+Session transfer works without VS Code. When VS Code attaches to a standalone owner, storage and policy belong to that owner; its saved cookies are not automatically imported from VS Code. See [sharing a server](mcp-setup.md#sharing-a-server-between-clients).
 
-Sessions auto-refresh every 15 minutes while VS Code is open, so a single setup typically lasts about a week with daily use.
+The owner manages session refresh while it is running. Reauthenticate if Rewst expires or revokes the session. For standalone login across restarts, enable [encrypted persistence](mcp-setup.md#keep-your-login-across-restarts).
 
 ## Link a Single Template
 

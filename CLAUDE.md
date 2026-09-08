@@ -86,21 +86,21 @@ src/
 
 ## User-Facing Documentation
 
-User docs are split between a short landing README and three deep-dive files in `docs/`. When adding or editing user-facing documentation, put content in the file whose purpose it matches — don't duplicate across files.
+User docs use an MCP-first landing README shared by GitHub and the VS Code Marketplace. Lead with concrete user outcomes and an investigation example, then a short setup path. Keep an early, prominent link for Marketplace readers who want the editor quick start.
 
 ```text
-README.md             # Marketplace/GitHub landing: banner, about, install,
-                      #   3-step quick start, features glance, security, links out.
-                      #   Keep short (~100 lines). No exhaustive feature detail.
+README.md                  # Outcomes, illustrative investigation, short setup, editor entry point.
 docs/
-├── quickstart.md     # Onboarding: first-time session setup (cookie + browser ext),
-│                     #   single-template workflow (primary), bulk folder workflow.
-├── features.md       # Per-feature deep dives, one H2 per feature
-│                     #   (Auto-Sync, Auto-Fetch, Smart Opening, Rename,
-│                     #   Stale Link Pruning, Navigation, Bundles, Server).
-└── reference.md      # Flat reference: sidebar, status bar, commands list,
-                      #   settings table, multi-region setup.
+├── README.md              # User documentation index.
+├── mcp-setup.md           # Client configurations, authentication, write policy, troubleshooting.
+├── browser-extension.md   # Illustrated download, sideload, and session-transfer steps.
+├── using-mcp.md           # Investigation prompts, evidence checks, and change review.
+├── quickstart.md          # VS Code onboarding: single template first, then bulk folder linking.
+├── features.md            # Editor feature details.
+└── reference.md           # Editor settings and commands.
 ```
+
+Keep download/Marketplace screenshots in setup guides. Prefer real, sanitized product captures when available; label illustrative scenarios explicitly and never present them as observed results. README images must be Marketplace-compatible PNGs (retain editable diagram sources separately). Keep advanced write flags in the setup guide and explain standing approval distinctly from per-call approval.
 
 **Conventions:**
 
@@ -108,9 +108,16 @@ docs/
 - Command names in docs must match `package.json` `contributes.commands` titles exactly (e.g., `Link File to Template`, not `Link Template`).
 - Settings table in `reference.md` must match `package.json` `contributes.configuration.properties` (name, type, default).
 - Status bar appears in the **bottom-left** (`StatusBarAlignment.Left` in `src/ui/StatusBarIcon.ts`).
-- "Unofficial" framing stays prominent in README — banner at top, title includes "Unofficial", package.json description starts with "Unofficial".
+- "Unofficial" framing stays prominent near the top of README; package.json description starts with "Unofficial".
 - Relative links (`docs/features.md`, `#anchor`) resolve on both GitHub and the VS Code Marketplace — prefer them over absolute URLs.
-- When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and add a changelog note (see **Changelog & Releases**).
+- When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` outcome or editor summary if relevant, and add a changelog note (see **Changelog & Releases**).
+
+## MCP contributor resources
+
+- [Build the standalone server](docs/mcp-setup.md#build-from-source); run `npm run test:mcp` for its headless tests.
+- [Server and extension architecture](docs/dev/standalone-mcp.md) documents package boundaries and shared-runtime ownership.
+- [Release process](docs/dev/releasing.md) covers publishing the extension and standalone package.
+- [GraphQL field guide](docs/dev/graphql-field-guide.md) covers API implementation details.
 
 ## Pull Request Conventions
 
