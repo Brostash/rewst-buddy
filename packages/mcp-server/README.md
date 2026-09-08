@@ -204,7 +204,8 @@ These tools are available before signing in. Only request changes authorized by
 the user. Changes affect **all clients connected to that owner** until restart;
 they do not modify launch flags or VS Code settings. Omitted fields are unchanged,
 and `orgs` replaces the allowlist. A settings change clears remembered approvals
-and pinned working scope. Clients receive a tool-list change notification; refresh
+and pinned working scope and invalidates pending approval requests. It cannot
+undo writes already sent to Rewst. Clients receive a tool-list change notification; refresh
 `tools/list` if your client does not automatically discover the newly enabled tools.
 
 To disable all writes, set `allowWrites`, `approveWrites`, and

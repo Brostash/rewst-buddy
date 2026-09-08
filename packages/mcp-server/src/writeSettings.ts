@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseCapabilityInput, toInputSchema } from './capabilities/inputHelpers';
 import type { ExtraTool } from './mcpServer';
 
 const schema = z
@@ -20,6 +21,10 @@ export interface WriteSettings {
 /** Process-local policy, shared by all connections to a standalone owner. */
 export class RuntimeWriteSettings {
 	private value: WriteSettings;
+	private generation = 0;
+	get revision(): number {
+		return this.generation;
+	}
 	private listeners = new Set<() => void>();
 	constructor(
 		initial: WriteSettings,
@@ -42,13 +47,14 @@ export class RuntimeWriteSettings {
 		};
 	}
 	update(input: Record<string, unknown>): WriteSettings {
-		const patch = schema.parse(input);
+		const patch = parseCapabilityInput(schema, input);
 		const next = { ...this.value, ...patch };
 		next.orgs = [...new Set(next.orgs)];
 		if ((next.allowWrites || next.approveWrites || next.allowGraphqlMutations) && next.orgs.length === 0)
 			throw new Error('Write settings require at least one org.');
 		if ((next.approveWrites || next.allowGraphqlMutations) && !next.allowWrites)
 			throw new Error('approveWrites and allowGraphqlMutations require allowWrites.');
+		this.generation++;
 		this.invalidateApprovals();
 		this.value = next;
 		for (const listener of this.listeners) listener();
@@ -67,16 +73,7 @@ export class RuntimeWriteSettings {
 				name: 'buddy_set_write_settings',
 				description:
 					'Change standalone server write permissions and org allowlist for ALL connected clients until restart. Request only changes authorized by the user. approveWrites skips Buddy approval for all writes; client approval depends on client configuration. Raw GraphQL can affect orgs outside the declared scope. Omitted fields stay unchanged; orgs replaces the allowlist. Clears remembered approvals and pinned working scope. Call tools/list after changing exposure.',
-				inputSchema: {
-					type: 'object',
-					additionalProperties: false,
-					properties: {
-						orgs: { type: 'array', items: { type: 'string', minLength: 1 } },
-						allowWrites: { type: 'boolean' },
-						approveWrites: { type: 'boolean' },
-						allowGraphqlMutations: { type: 'boolean' },
-					},
-				},
+				inputSchema: toInputSchema(schema),
 				run: async input => this.update(input),
 			},
 		];

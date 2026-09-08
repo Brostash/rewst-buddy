@@ -1,3 +1,4 @@
+import { getRuntimeWriteSettings } from '../host';
 import { detectOperationType, runMutationGraphql, type MutationScope } from '../tools/graphqlTool';
 import type { ToolSpec } from '../tools/toolProtocol';
 import { currentApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
@@ -29,12 +30,24 @@ export function _resetMcpMutationApproverForTesting(): void {
 }
 
 export function requestMcpMutationApproval(scope: MutationScope, operation: string): Promise<boolean> {
-	return approver(scope, operation, currentApprovalOrigin());
+	return requestCurrentPolicyApproval(approver, scope, operation);
 }
 
 /** For typed, resource-verified write handlers only; never select from tool input. */
 export function requestMcpScopedMutationApproval(scope: MutationScope, operation: string): Promise<boolean> {
-	return (scopedApprover ?? approver)(scope, operation, currentApprovalOrigin());
+	return requestCurrentPolicyApproval(scopedApprover ?? approver, scope, operation);
+}
+
+/** A settings change invalidates approvals that are still pending, too. */
+async function requestCurrentPolicyApproval(
+	fn: McpMutationApprover,
+	scope: MutationScope,
+	operation: string,
+): Promise<boolean> {
+	const policy = getRuntimeWriteSettings();
+	const revision = policy?.revision;
+	const approved = await fn(scope, operation, currentApprovalOrigin());
+	return approved && getRuntimeWriteSettings() === policy && policy?.revision === revision;
 }
 
 const graphqlMutateSpec: ToolSpec = {

@@ -9,7 +9,7 @@ import {
 	ListToolsRequestSchema,
 	ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { callTool, listResources, listTools, McpError, readResource } from './mcp/McpActions';
+import { callRuntimeWriteTool, callTool, listResources, listTools, McpError, readResource } from './mcp/McpActions';
 import { buildMcpInstructions, MCP_PROMPTS, renderMcpPrompt } from './mcp/instructions';
 import { MCP_PROTOCOL_VERSION } from './mcp/protocol';
 import { readMcpSettings } from './mcp/settings';
@@ -34,6 +34,8 @@ const SERVER_INFO = {
 	name: 'rewst-buddy-mcp',
 	version: typeof __PACKAGE_VERSION__ === 'string' ? __PACKAGE_VERSION__ : '0.1.0',
 };
+
+const RUNTIME_WRITE_TOOL_NAMES = new Set(['buddy_get_write_settings', 'buddy_set_write_settings']);
 
 function toObjectSchema(schema: object): { type: 'object'; [key: string]: unknown } {
 	if (schema && typeof schema === 'object' && (schema as { type?: unknown }).type === 'object') {
@@ -124,14 +126,18 @@ export function createMcpServer(options: McpServerOptions = {}): Server {
 		const custom = extraByName.get(request.params.name);
 		if (custom) {
 			try {
-				const value = await custom.run(input, {
-					signal: extra.signal,
-					emit: event =>
-						extra.sendNotification({
-							method: 'notifications/rewst/event',
-							params: { event },
-						} as never),
-				});
+				const run = () =>
+					custom.run(input, {
+						signal: extra.signal,
+						emit: event =>
+							extra.sendNotification({
+								method: 'notifications/rewst/event',
+								params: { event },
+							} as never),
+					});
+				const value = RUNTIME_WRITE_TOOL_NAMES.has(request.params.name)
+					? await callRuntimeWriteTool(request.params.name, run)
+					: await run();
 				const result = value ?? null;
 				const text = typeof result === 'string' ? result : JSON.stringify(result);
 				return { content: [{ type: 'text' as const, text }], structuredContent: { result } };

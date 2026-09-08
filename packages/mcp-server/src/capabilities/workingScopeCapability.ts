@@ -1,3 +1,4 @@
+import { getRuntimeWriteSettings } from '../host';
 import { WorkingScopeManager } from '../models/index';
 import type { Session } from '../sessions/index';
 import { readMcpSettings } from '../mcp/settings';
@@ -54,8 +55,11 @@ export function _resetWorkingScopeApproverForTesting(): void {
 	approver = async () => false;
 }
 
-function requestWorkingScopeApproval(request: WorkingScopeChangeRequest): Promise<boolean> {
-	return approver(request, currentApprovalOrigin());
+async function requestWorkingScopeApproval(request: WorkingScopeChangeRequest): Promise<boolean> {
+	const policy = getRuntimeWriteSettings();
+	const revision = policy?.revision;
+	const approved = await approver(request, currentApprovalOrigin());
+	return approved && getRuntimeWriteSettings() === policy && policy?.revision === revision;
 }
 
 function toIdArray(value: unknown): string[] {

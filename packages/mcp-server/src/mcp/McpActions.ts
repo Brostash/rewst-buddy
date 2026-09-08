@@ -207,6 +207,26 @@ function logCallToolAudit(tool: string, orgId: string, outcome: AuditOutcome, st
 	log.info(`[MCP audit] tool=${safeTool} orgId=${safeOrgId} outcome=${outcome} durationMs=${Date.now() - startedAt}`);
 }
 
+/** Run a standalone runtime-control tool through the same MCP throttle/audit path. */
+export async function callRuntimeWriteTool(name: string, run: () => Promise<unknown>): Promise<unknown> {
+	const startedAt = Date.now();
+	let auditOutcome: AuditOutcome = 'ok';
+	try {
+		if (!THROTTLE.tryAcquire()) {
+			throw new McpError(
+				'rate_limited',
+				`Too many MCP calls; slow down and retry in ~${Math.ceil(THROTTLE.retryAfterMs() / 1000)}s.`,
+			);
+		}
+		return await run();
+	} catch (error) {
+		auditOutcome = `error:${error instanceof McpError ? error.code : 'internal'}`;
+		throw error;
+	} finally {
+		logCallToolAudit(name, '—', auditOutcome, startedAt);
+	}
+}
+
 /** Validates the session, attempting one refresh, before a capability runs. */
 async function ensureValidSession(session: Session): Promise<void> {
 	if (await session.validate()) return;

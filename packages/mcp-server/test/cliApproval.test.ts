@@ -1,3 +1,6 @@
+import { getRuntimeHost } from '../src/host';
+import { _resetMcpThrottleForTesting } from '../src/mcp/McpActions';
+import { WorkingScopeManager } from '../src/models/WorkingScopeManager';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,6 +46,7 @@ describe('CLI mutation approval through MCP', () => {
 	const createTemplate = vi.fn(async () => ({ template: { id: 'typed-template', name: 'Safe' } }));
 
 	beforeEach(() => {
+		_resetMcpThrottleForTesting();
 		listener.ready = undefined;
 		rawGraphql.mockClear();
 		createTemplate.mockClear();
@@ -173,6 +177,73 @@ describe('CLI mutation approval through MCP', () => {
 			await peer.close();
 			await peerServer.close();
 		}
+	});
+
+	it('audits successful and invalid settings calls and shares the normal tool throttle', async () => {
+		const agent = await start();
+		const audit = vi.spyOn(getRuntimeHost(), 'log');
+		expect(
+			(await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-a'] } })).isError,
+		).not.toBe(true);
+		expect(audit).toHaveBeenCalledWith(
+			'info',
+			expect.stringMatching(/\[MCP audit\] tool=buddy_set_write_settings .*outcome=ok/),
+		);
+		expect(
+			(await agent.callTool({ name: 'buddy_set_write_settings', arguments: { allowWrites: 'invalid' } })).isError,
+		).toBe(true);
+		expect(audit).toHaveBeenCalledWith(
+			'info',
+			expect.stringMatching(/tool=buddy_set_write_settings .*outcome=error:/),
+		);
+		for (let i = 0; i < 28; i++) await agent.callTool({ name: 'buddy_get_write_settings' });
+		WorkingScopeManager.applyChange({ orgs: ['org-a'], workflows: ['wf'], replace: true }, [
+			{ id: 'wf', name: 'Pinned' },
+		]);
+		const denied = await agent.callTool({ name: 'buddy_set_write_settings', arguments: { orgs: ['org-b'] } });
+		expect(denied.structuredContent).toMatchObject({ code: 'rate_limited' });
+		expect(audit).toHaveBeenCalledWith(
+			'info',
+			expect.stringMatching(/tool=buddy_set_write_settings .*outcome=error:rate_limited/),
+		);
+		expect(WorkingScopeManager.getOrgs()).toEqual(['org-a']);
+		expect((await agent.callTool(mutation)).structuredContent).toMatchObject({ code: 'rate_limited' });
+	});
+
+	it('clears named workflow metadata with the pinned scope', async () => {
+		const agent = await start();
+		WorkingScopeManager.applyChange({ workflows: ['wf'] }, [{ id: 'wf', name: 'Pinned' }]);
+		await agent.callTool({ name: 'buddy_set_write_settings', arguments: { approveWrites: false } });
+		expect(WorkingScopeManager.getWorkflows()).toEqual([]);
+		expect(WorkingScopeManager.workflowNames.size).toBe(0);
+	});
+
+	it.each([
+		mutation,
+		{ name: 'buddy_create_template', arguments: { orgId: 'org-a', name: 'Safe', body: '' } },
+		{ name: 'buddy_set_working_scope', arguments: { orgs: ['org-a'], replace: true } },
+	])('invalidates pending editor approval for $name when settings change', async request => {
+		const agent = await start(false);
+		let approve!: (value: boolean) => void;
+		vi.mocked(requestAttachedEditor).mockImplementation(
+			() =>
+				new Promise<boolean>(resolve => {
+					approve = resolve;
+				}),
+		);
+		const pending = agent.callTool(request);
+		await vi.waitFor(() => expect(requestAttachedEditor).toHaveBeenCalled());
+		await agent.callTool({
+			name: 'buddy_set_write_settings',
+			arguments: { allowWrites: false, allowGraphqlMutations: false },
+		});
+		approve(true);
+		expect((await pending).structuredContent).toMatchObject({
+			result: { status: request.name === 'buddy_set_working_scope' ? 'denied' : 'approval_required' },
+		});
+		expect(rawGraphql).not.toHaveBeenCalled();
+		expect(createTemplate).not.toHaveBeenCalled();
+		expect(WorkingScopeManager.getOrgs()).toEqual([]);
 	});
 
 	it('uses editor approval only when automatic approval is disabled', async () => {
