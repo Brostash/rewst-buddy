@@ -38,7 +38,12 @@ async function editor() {
 			params: z.object({ operation: z.string(), input: z.record(z.string(), z.unknown()) }),
 		}),
 		async request => ({
-			result: request.params.operation === 'browser.openTemplate' ? { success: true } : request.params.input,
+			result:
+				request.params.operation === 'browser.openTemplate'
+					? { success: true }
+					: request.params.operation === 'capability.run'
+						? JSON.stringify(request.params.input)
+						: request.params.input,
 		}),
 	);
 	const server = createSharedEditorServer();
@@ -150,7 +155,7 @@ test('each shared editor routes host capabilities to its own attached client', a
 			clients.push(client);
 			servers.push(server);
 		}
-		const args = { name: hostCapability.spec.name, arguments: {} };
+		const args = { name: hostCapability.spec.name, arguments: { origin: 'mcp' }, origin: 'mcp' as const };
 		const first = await clients[0].callTool({
 			name: 'rewst_editor_operation',
 			arguments: { operation: 'tools.call', input: args },
@@ -161,8 +166,8 @@ test('each shared editor routes host capabilities to its own attached client', a
 		});
 		const firstToolResult = JSON.parse(String((first.content[0] as { text?: string }).text)) as { text: string };
 		const secondToolResult = JSON.parse(String((second.content[0] as { text?: string }).text)) as { text: string };
-		expect(JSON.parse(firstToolResult.text)).toMatchObject({ from: 'editor-a' });
-		expect(JSON.parse(secondToolResult.text)).toMatchObject({ from: 'editor-b' });
+		expect(JSON.parse(firstToolResult.text)).toMatchObject({ from: 'editor-a', input: { origin: 'chat' } });
+		expect(JSON.parse(secondToolResult.text)).toMatchObject({ from: 'editor-b', input: { origin: 'chat' } });
 		const direct = await callTool(args);
 		expect(direct.text).toBe('owner implementation');
 	} finally {
@@ -271,7 +276,10 @@ test.each(['buddy_template_sync', 'buddy_template_sync_status'])(
 			() => publicServer.close(),
 		);
 		const names = async () => (await client.listTools()).tools.map(tool => tool.name);
-		const request = { name, arguments: { orgId: 'org', uri: '/linked.jinja', direction: 'upload' } };
+		const request = {
+			name,
+			arguments: { orgId: 'org', uri: '/linked.jinja', direction: 'upload', origin: 'chat' },
+		};
 		const expectUnavailable = async () => {
 			expect(await names()).not.toContain(name);
 			const result = await client.callTool(request);
@@ -300,7 +308,9 @@ test.each(['buddy_template_sync', 'buddy_template_sync_status'])(
 			expect(attached.isError).not.toBe(true);
 			await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
 			expect(await names()).toContain(name);
-			expect((await client.callTool(request)).isError).not.toBe(true);
+			const response = await client.callTool(request);
+			expect(response.isError).not.toBe(true);
+			expect(response.structuredContent).toMatchObject({ result: { origin: 'mcp', args: { origin: 'chat' } } });
 
 			// The capability has already been resolved when the editor disconnects.
 			let finishValidation!: (valid: boolean) => void;

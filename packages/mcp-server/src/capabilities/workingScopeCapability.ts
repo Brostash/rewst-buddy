@@ -12,7 +12,7 @@ import { rawGraphqlOrThrow } from './inputHelpers';
  * Read and request changes to the user's working scope (see WorkingScopeManager).
  * `buddy_get_working_scope` lets a model or external client see what it is allowed to
  * operate on; `buddy_set_working_scope` lets it *request* a change, which only takes
- * effect after the user confirms the host approval request. Setting the scope is not itself
+ * effect under client tool permissions for MCP, or host approval for built-in actions. Setting the scope is not itself
  * a Rewst write, so it stays available regardless of the write-tool toggles —
  * otherwise you could not narrow scope before enabling writes.
  */

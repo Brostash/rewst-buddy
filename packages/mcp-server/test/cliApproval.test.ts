@@ -383,6 +383,31 @@ describe('CLI mutation approval through MCP', () => {
 		expect(createTemplate).not.toHaveBeenCalled();
 	});
 
+	it('rejects an in-flight write if the working workflow changes during session validation', async () => {
+		const agent = await start(false);
+		WorkingScopeManager.applyChange({ workflows: ['wf-before'] });
+		const session = SessionManager.getActiveSessions()[0];
+		let finish!: (valid: boolean) => void;
+		vi.spyOn(session, 'validate').mockImplementationOnce(
+			() =>
+				new Promise<boolean>(resolve => {
+					finish = resolve;
+				}),
+		);
+		const pending = agent.callTool({
+			...mutation,
+			arguments: { ...mutation.arguments, scopeName: 'workflow', scopeId: 'wf-before' },
+		});
+		await vi.waitFor(() => expect(finish).toBeDefined());
+		WorkingScopeManager.applyChange({ workflows: ['wf-after'], replace: true });
+		finish(true);
+		const result = await pending;
+		expect(result.isError).toBe(true);
+		expect(result.structuredContent).toMatchObject({ code: 'workflow_out_of_scope' });
+		expect(rawGraphql).not.toHaveBeenCalled();
+		expect(requestAttachedEditor).not.toHaveBeenCalled();
+	});
+
 	it('rejects editor fallback when the target org has left the current scope', async () => {
 		const agent = await start(false);
 		vi.mocked(requestAttachedEditor).mockResolvedValue(true);

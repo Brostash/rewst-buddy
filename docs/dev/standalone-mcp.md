@@ -70,10 +70,11 @@ acts as a Rewst credential. Public MCP tools cannot submit or retrieve Rewst
 cookies; private editor operations handle VS Code session administration.
 
 Read-only GraphQL exploration is part of the default public capability set.
-Typed mutations require the owner's write switch and effective org scope. A
-headless owner can preapprove typed writes only inside its `--org` allowlist.
-Arbitrary GraphQL documents require the separate mutation switch and an attached
-editor's per-call approval; the standing typed-write approval does not bypass it.
+Typed mutations require the owner's write switch and effective org scope. External MCP clients enforce their own tool permissions without editor prompts.
+Arbitrary GraphQL documents require the separate mutation switch and are not
+contained by their declared organization. Built-in editor actions retain host
+approval. Trusted bridge metadata preserves that distinction for optional editor
+tools, which disappear when no supporting editor is connected.
 
 ## Standalone credential persistence
 

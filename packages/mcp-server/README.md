@@ -223,10 +223,10 @@ inspect the current policy, then `buddy_set_write_settings` with, for example:
 
 ```json
 {
-  "orgs": ["YOUR_ORG_ID"],
-  "allowWrites": true,
-  "approveWrites": false,
-  "allowGraphqlMutations": false
+	"orgs": ["YOUR_ORG_ID"],
+	"allowWrites": true,
+	"approveWrites": false,
+	"allowGraphqlMutations": false
 }
 ```
 

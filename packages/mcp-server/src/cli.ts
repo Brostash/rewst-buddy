@@ -45,18 +45,6 @@ export interface CliIo {
 	stderr: Writable;
 }
 
-/** Returns whether a requested scope stays within the CLI's explicit --org set. */
-export function isAllowedScopeChange(
-	request: { orgs: readonly { id: string }[]; workflows: readonly { orgId?: string }[] },
-	allowedOrgs: ReadonlySet<string> | readonly string[],
-): boolean {
-	const allowed = allowedOrgs instanceof Set ? allowedOrgs : new Set(allowedOrgs);
-	return (
-		request.orgs.every(org => allowed.has(org.id)) &&
-		request.workflows.every(workflow => typeof workflow.orgId === 'string' && allowed.has(workflow.orgId))
-	);
-}
-
 const HELP = `Usage: rewst-buddy-mcp [options]
 
 Run a Rewst Buddy MCP server over stdio (the default) or localhost HTTP.

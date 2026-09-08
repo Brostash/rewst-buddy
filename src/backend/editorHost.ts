@@ -2,7 +2,7 @@ import type { Client as SDKClient } from '@modelcontextprotocol/sdk/client/index
 import { z } from 'zod';
 import type { ServerResponse } from 'http';
 import vscode from 'vscode';
-import type { ApprovalOrigin } from '../../packages/mcp-server/src/capabilities/approvalOrigin';
+import { runWithApprovalOrigin, type ApprovalOrigin } from '../../packages/mcp-server/src/capabilities/approvalOrigin';
 import type { MutationScope } from '../../packages/mcp-server/src/tools/graphqlTool';
 import type {
 	NamedOrg,
@@ -207,7 +207,11 @@ async function runCapability(input: Record<string, unknown>): Promise<string> {
 	const args = objectInput(input.args, 'args');
 	const capability = OPTIONAL_EDITOR_CAPABILITIES.find(candidate => candidate.spec.name === name);
 	if (!capability) throw new Error(`Unknown editor capability: ${name}`);
-	return runOptionalEditorCapability(capability, args, capabilityContext(input));
+	// Older envelopes and built-in editor operations retain host approval.
+	const requestOrigin = input.origin === undefined ? 'chat' : origin(input.origin);
+	return runWithApprovalOrigin(requestOrigin, () =>
+		runOptionalEditorCapability(capability, args, capabilityContext(input)),
+	);
 }
 
 /** Dispatch one private editor operation, allowing only explicitly supported operations. */

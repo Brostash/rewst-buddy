@@ -151,12 +151,12 @@
 				"rewst-buddy.mcp.enableWriteTools": {
 					"type": "boolean",
 					"default": false,
-					"description": "Allow workflow MCP tools that change Rewst data (buddy_workflow_edit, buddy_workflow_autolayout, and buddy_workflow_run). Even when enabled, each change still requires your approval inside VS Code. Workflow edits do not expose task parallelism controls (new tasks use sequential graph defaults). Does not expose raw GraphQL mutation."
+					"description": "Allow workflow MCP tools that change Rewst data (buddy_workflow_edit, buddy_workflow_autolayout, and buddy_workflow_run). External MCP calls use the AI client’s tool-call permissions; built-in VS Code actions retain editor approval. Workflow edits do not expose task parallelism controls (new tasks use sequential graph defaults). Does not expose raw GraphQL mutation."
 				},
 				"rewst-buddy.mcp.enableDangerousGraphqlMutation": {
 					"type": "boolean",
 					"default": false,
-					"description": "Allow the raw buddy_graphql_mutate MCP tool to run arbitrary GraphQL mutations against the live Rewst organization. This is separate from write tools because it can change anything your Rewst session can change; each mutation still requires per-resource approval inside VS Code."
+					"description": "Allow the raw buddy_graphql_mutate MCP tool to run arbitrary GraphQL mutations against the live Rewst organization. This is separate from write tools because it can change anything your Rewst session can change; external MCP calls use the AI client’s tool-call permissions; built-in VS Code actions retain editor approval."
 				},
 				"rewst-buddy.mcp.alwaysAllowedOrgs": {
 					"type": "array",
@@ -927,7 +927,7 @@
 		"uuid": "^13.0.0",
 		"vite-tsconfig-paths": "^6.1.1",
 		"vitest": "^4.1.9",
-		"ws": "^8.18.3"
+		"ws": "^8.21.0"
 	},
 	"lint-staged": {
 		"packages/mcp-server/src/sessions/graphql/generated/**": [],
