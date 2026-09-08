@@ -34,7 +34,7 @@ The assistant can list recent executions and inspect details. When a response is
 
 > Propose the smallest change that addresses the failure. Show what would change and which organization and resource would be affected. Wait for my approval before applying it.
 
-A proposal does not need write access. Applying it does. See [enabling writes](mcp-setup.md#enabling-writes) before moving from investigation to modification.
+A proposal does not need write access. Applying it does. Asking the assistant to wait is a conversational instruction; enforce approval for each write through the server policy if you need a required review step. Standing approval permits supported writes without a separate editor prompt. See [enabling writes](mcp-setup.md#enabling-writes) before moving from investigation to modification.
 
 | Server policy                                            | Behavior                                                                                                          |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |

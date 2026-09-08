@@ -1,6 +1,6 @@
 # MCP setup guide
 
-Connect your AI assistant to Rewst to find workflows, inspect executions, read templates, explore the GraphQL schema, and make approved changes. Rewst Buddy runs locally as an MCP server and uses your Rewst session permissions.
+Connect your AI assistant to Rewst to find workflows, inspect executions, read templates, explore the GraphQL schema, and optionally make changes controlled by organization scope and approval settings. Rewst Buddy runs locally as an MCP server and uses your Rewst session permissions.
 
 **VS Code is optional.** The companion Chrome extension transfers your browser session to the server. The VS Code extension adds template editing, sync-on-save, Jinja tooling, and approval dialogs.
 
